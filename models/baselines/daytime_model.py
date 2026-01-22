@@ -1,84 +1,75 @@
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
-from sklearn.compose import ColumnTransformer
 from matplotlib import pyplot as plt
 import torch
-from torch import nn
 from torch.utils.data import TensorDataset
 
 # read in data
-dataset = pd.read_csv('data_utc/Seattle/data_utc.csv')
-mask = dataset['Year'] <= 2020
+dataset = pd.read_csv('data/target/data.csv')
+mask = dataset['Year'] <= 2022
 train_dataset = dataset[mask].copy()
-mask = dataset['Year'] == 2022
+mask = dataset['Year'] == 2024
 test_dataset = dataset[mask].copy()
 
-# initialize sample and batch sizes
-sample_size = len(train_dataset)
+# initialize train and batch sizes
+train_size = len(train_dataset)
 batch_size = 1
-num_of_batches = sample_size / batch_size
+num_of_batches = train_size / batch_size
 
-valid_size = len(test_dataset)
+test_size = len(test_dataset)
 
 # create day of year column
 train_dataset['DayOfYear'] = pd.to_datetime(train_dataset[['Year', 'Month', 'Day']]).apply(lambda x: x.timetuple().tm_yday)
-train_dataset['DayOfYear'] = train_dataset['DayOfYear'].mask((train_dataset['DayOfYear'] >= 60) & ((train_dataset['Year'] == 2016) | (train_dataset['Year'] == 2020)), train_dataset['DayOfYear']-1)
+# fix leap year day count
+train_dataset['DayOfYear'] = train_dataset['DayOfYear'].mask((train_dataset['DayOfYear'] >= 60) & ((train_dataset['Year'] == 2020)), train_dataset['DayOfYear']-1)
+
+# same for test set
 test_dataset['DayOfYear'] = pd.to_datetime(test_dataset[['Year', 'Month', 'Day']]).apply(lambda x: x.timetuple().tm_yday)
+test_dataset['DayOfYear'] = test_dataset['DayOfYear'].mask((test_dataset['DayOfYear'] >= 60) & ((test_dataset['Year'] == 2024)), test_dataset['DayOfYear']-1)
+
+# move up deterministic columns and place into new columns
+train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-1)
+test_dataset["Future_SZA"] = test_dataset["Solar Zenith Angle"].shift(-1)
+train_dataset["Future_CS_GHI"] = train_dataset["Clearsky GHI"].shift(-1)
+test_dataset["Future_CS_GHI"] = test_dataset["Clearsky GHI"].shift(-1)
+train_dataset["Future_CS_DNI"] = train_dataset["Clearsky DNI"].shift(-1)
+test_dataset["Future_CS_DNI"] = test_dataset["Clearsky DNI"].shift(-1)
+train_dataset["Future_CS_DHI"] = train_dataset["Clearsky DHI"].shift(-1)
+test_dataset["Future_CS_DHI"] = test_dataset["Clearsky DHI"].shift(-1)
+train_dataset["Future_GHI"] = train_dataset["GHI"].shift(-1)
+test_dataset["Future_GHI"] = test_dataset["GHI"].shift(-1)
+train_dataset = train_dataset.iloc[:-1]
+test_dataset = test_dataset.iloc[:-1]
+
+train_dataset['CSI'] = train_dataset['Future_GHI'] / train_dataset['Future_CS_GHI']
+test_dataset['CSI'] = test_dataset['Future_GHI'] / test_dataset['Future_CS_GHI']
+train_dataset['CSI'] = train_dataset['CSI'].fillna(0.0)
+test_dataset['CSI'] = test_dataset['CSI'].fillna(0.0)
+mask = train_dataset['Future_SZA'] >= 90
+train_dataset.loc[mask, 'CSI'] = 0.0
+mask = test_dataset['Future_SZA'] >= 90
+test_dataset.loc[mask, 'CSI'] = 0.0
 
 # drop unused columns and get values out of dataframe
-x_train = train_dataset.drop(columns = ['GHI', 'Minute', 'Year', 'DNI', 'DHI', 'Solar Zenith Angle', 'Day', 'DayOfYear'])
-y_train = train_dataset[['GHI']]
-x_test = test_dataset.drop(columns = ['GHI', 'Minute', 'Year', 'DNI', 'DHI', 'Solar Zenith Angle', 'Day', 'DayOfYear'])
-y_test = test_dataset[['GHI']]
+x_train = train_dataset[['Future_SZA']]
+y_train = train_dataset[['CSI']]
+x_test = test_dataset[['Future_SZA']]
+y_test = test_dataset[['CSI']]
 
-x_columns = []
+# create a mask of daytime hours to generate averages
+train_mask = (train_dataset['Future_SZA'] < 90)
+test_mask = (test_dataset['Future_SZA'] < 90)
+daytime_average = np.mean(train_dataset['CSI'][train_mask])
+print("Daytime Average CSI: " + str(daytime_average))
+test_average = np.mean(test_dataset['CSI'][test_mask])
 
-# scale all input columns 
-x_scaler = ColumnTransformer([("scaler", StandardScaler(), x_columns)], remainder='passthrough')
-x_train = x_scaler.fit_transform(x_train)
-x_test = x_scaler.transform(x_test)
+x_train = x_train.to_numpy()
+x_test = x_test.to_numpy()
 
-# create scaled instances of night to use as comparison
-# night_start = np.array([[0,0,0,4,0,0,0,0,0,0,0]])
-# night_end = np.array([[0,0,0,20,0,0,0,0,0,0,0]])
-night_start = 3
-night_end = 12
-
-# create a mask of 9pm - 4am and get average of everything else
-mask = (train_dataset['Hour'] >= 12) | (train_dataset['Hour'] <= 3)
-test_average = np.mean(y_test)
-the_average = np.mean(y_train[mask])
-print("Mean: " + str(the_average))
-mean = np.mean(y_train)
-print("Overall Mean: " + str(mean))
-
-# scale label columns
-# y_train = y_train.reshape(-1, 1)
-# y_test = y_test.reshape(-1, 1)
-# y_scaler = StandardScaler()
-# y_train = y_scaler.fit_transform(y_train)
-# y_train = y_train.reshape(1, -1)[0]
 y_train = y_train.to_numpy()
 y_test = y_test.to_numpy()
 
-# print(y_train)
-# scaled_average = np.mean(y_train[mask])
-# print("Mean of Scaled Values: " + str(scaled_average))
-
-# y_test = y_scaler.transform(y_test)
-# y_test = y_test.reshape(1, -1)[0]
-# average = y_scaler.transform(average.reshape(-1,1))
-# average = average.reshape(1,-1)[0][0]
-# old_average = y_scaler.inverse_transform(average.reshape(-1,1))
-# old_average = old_average.reshape(1,-1)[0]
-# print("Scaled Mean: " + str(average))
-# zero = y_scaler.transform(np.array(0).reshape(-1,1))
-# zero = zero.reshape(1,-1)[0][0]
-# old_zero = y_scaler.inverse_transform(zero.reshape(-1,1))
-# old_zero = zero.reshape(1,-1)[0]
-
-zero = [0]
+zero = [0.0]
 
 # turn data into tensors
 x_train = torch.FloatTensor(x_train)
@@ -86,74 +77,166 @@ x_test = torch.FloatTensor(x_test)
 y_train = torch.FloatTensor(y_train)
 y_test = torch.FloatTensor(y_test)
 zero = torch.FloatTensor(np.array(zero))
-# old_zero = torch.FloatTensor(np.array(old_zero))
-average = torch.FloatTensor(np.array([the_average]))
-# print(average)
-# input()
-# old_average = torch.FloatTensor(np.array(old_average))
+average = torch.FloatTensor(np.array([daytime_average]))
 
 # create training and validation datasets 
 dataset = TensorDataset(x_train, y_train)
-validation_dataset = TensorDataset(x_test, y_test)
-
-# set model criterion
-criterion = nn.MSELoss()
+test_dataset = TensorDataset(x_test, y_test)
 
 # training and validation loop
-epochs = 1
-losses = []
-valid_losses = []
-guesses = []
-for epoch in range(epochs):
-    print("Epoch: " + str(epoch))
-    # training loop
-    loss_total = 0.0
-    for id_batch, (x_batch, y_batch) in enumerate(dataset):
-        # unscaled_y_batch = y_scaler.inverse_transform(y_batch.reshape(-1,1))
-        # unscaled_y_batch = torch.FloatTensor(unscaled_y_batch.reshape(1,-1)[0])
-        if x_batch[1] <= night_start or x_batch[1] >= night_end:
-            loss = criterion(average, y_batch)
-            guesses.append(average.item())
-        else:
-            guesses.append(zero.item())
-            loss = criterion(zero, y_batch)
-        loss_total += np.sqrt(loss.detach().numpy())
-    #print("Loss: " + str(loss_total/num_of_batches))
-    losses.append(loss_total/num_of_batches)
+train_preds = []
+test_preds = []
+train_targets = [] 
+test_targets = []
 
-    # validation loop
-    loss_total = 0.0
-    for id_batch, (x_batch, y_batch) in enumerate(validation_dataset):
-        # unscaled_y_batch = y_scaler.inverse_transform(y_batch.reshape(-1,1))
-        # unscaled_y_batch = torch.FloatTensor(unscaled_y_batch.reshape(1,-1)[0])
-        if x_batch[1] <= night_start or x_batch[1] >= night_end:
-            loss = criterion(average, y_batch)
-        else:
-            loss = criterion(zero, y_batch)
-        loss_total += np.sqrt(loss.detach().numpy())
-    curr_loss = loss_total/valid_size
-    valid_losses.append(curr_loss)
-    print("Loss: " + str(curr_loss))
-    print("NRMSE: " + str(curr_loss/test_average))
+train_se = 0.0
+test_se = 0.0
+
+train_ae = 0.0 
+test_ae = 0.0
+
+train_bias_sum = 0.0
+test_bias_sum = 0.0
+
+train_smape_sum = 0.0 
+test_smape_sum = 0.0
+
+train_smape_count = 0 
+test_smape_count = 0
+
+train_count = 0
+test_count = 0
+
+# training loop
+for id_batch, (x_batch, y_batch) in enumerate(dataset):
+    if x_batch[0] < 90:
+        pred = average
+        y = y_batch.item()
+        err = pred.item() - y
+
+        # MSE / MAE
+        train_se += err**2
+        train_ae += abs(err)
+        train_count += 1
+
+        # MBE
+        train_bias_sum += (pred.item() - y)
+
+        # sMAPE
+        denom = abs(y) + abs(pred.item())
+        if denom != 0:
+            train_smape_sum += 2 * abs(err) / denom
+            train_smape_count += 1
+
+        train_targets.append(y)
+
+    else:
+        pred = zero
+    
+    train_preds.append(pred)
+
+# testing loop
+for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
+    if x_batch[0] < 90:
+        pred = average
+        y = y_batch.item()
+        err = pred.item() - y
+
+        # MSE / MAE
+        test_se += err**2
+        test_ae += abs(err)
+        test_count += 1
+
+        # MBE
+        test_bias_sum += (pred.item() - y)
+
+        #sMAPE
+        denom = abs(y) + abs(pred.item())
+        if denom != 0:
+            test_smape_sum += 2 * abs(err) / denom
+            test_smape_count += 1
+
+        test_targets.append(y)
+
+    else:
+        pred = zero
+    
+    test_preds.append(pred)
+
+train_mse = train_se / train_count
+test_mse = test_se / test_count
+
+train_rmse = train_mse**0.5
+test_rmse = test_mse**0.5
+
+train_mae = train_ae / train_count
+test_mae = test_ae / test_count
+
+train_mbe = train_bias_sum / train_count
+test_mbe = test_bias_sum / test_count
+
+train_smape = train_smape_sum / train_smape_count
+test_smape = test_smape_sum / test_smape_count
+
+train_targets_t = torch.tensor(train_targets)
+train_preds_t = torch.tensor(train_preds[:len(train_targets)])
+test_targets_t = torch.tensor(test_targets)
+test_preds_t = torch.tensor(test_preds[:len(test_targets)])
+
+train_mean_y = train_targets_t.mean().item()
+test_mean_y = test_targets_t.mean().item()
+train_nrmse = train_rmse / train_mean_y
+test_nrmse = test_rmse / test_mean_y
+
+train_r2 = 1 - torch.sum((train_targets_t - train_preds_t)**2) / torch.sum((train_targets_t - train_targets_t.mean())**2) 
+test_r2 = 1 - torch.sum((test_targets_t - test_preds_t)**2) / torch.sum((test_targets_t - test_targets_t.mean())**2)
+
+# print results
+print("Training Error")
+print("MSE:", train_mse)
+print("RMSE:", train_rmse)
+print("NRMSE:", train_nrmse)
+print("MAE:", train_mae)
+print("MBE:", train_mbe)
+print("sMAPE:", train_smape)
+print("R^2:", train_r2.item())
+
+print("\nTesting Error")
+print("MSE:", test_mse)
+print("RMSE:", test_rmse)
+print("NRMSE:", test_nrmse)
+print("MAE:", test_mae)
+print("MBE:", test_mbe)
+print("sMAPE:", test_smape)
+print("R^2:", test_r2.item())
+
+# save results
+with open("results/baseline_results/daytime_average.txt", 'w') as file:
+    file.write("Training Error\n")
+    file.write("MSE: " + str(train_mse) + "\n")
+    file.write("RMSE: " + str(train_rmse) + "\n")
+    file.write("NRMSE: " + str(train_nrmse) + "\n")
+    file.write("MAE: " +str(train_mae) + "\n")
+    file.write("MBE: " + str(train_mbe) + "\n")
+    file.write("sMAPE: " + str(train_smape) + "\n")
+    file.write("R^2: " + str(train_r2.item()) + "\n")
+
+    file.write("\nTesting Error\n")
+    file.write("MSE: " + str(test_mse) + "\n")
+    file.write("RMSE: " + str(test_rmse) + "\n")
+    file.write("NRMSE: " + str(test_nrmse) + "\n")
+    file.write("MAE: " +str(test_mae) + "\n")
+    file.write("MBE: " + str(test_mbe) + "\n")
+    file.write("sMAPE: " + str(test_smape) + "\n")
+    file.write("R^2: " + str(test_r2.item()))
 
 # plot the results
-# plt.plot(range(epochs), losses)
-# plt.plot(range(epochs), valid_losses)
-# plt.ylabel("RMSE")
-# plt.xlabel("Epoch")
-# plt.savefig("results/baseline_results/baseline_night.pdf")
-# plt.show(block=False)
-# plt.close()
-
-og_average = [150.16012720156556] * 72
-new_average = [225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328, 225.2401885986328]
-
-plt.plot(range(72), og_average)
 plt.plot(range(72), y_test[:72])
-plt.plot(range(72), guesses[:72])
-plt.ylabel("GHI")
+plt.plot(range(72), test_preds[:72])
+plt.title("Daytime Average CSI Pred vs Actual")
+plt.ylabel("CSI")
 plt.xlabel("Hour")
-plt.savefig("results/baseline_results/baseline_night_avp.pdf")
+plt.savefig("results/baseline_results/daytime_average.pdf")
 plt.show(block=False)
 
 # save result for other model graphs

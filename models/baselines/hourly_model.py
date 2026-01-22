@@ -7,15 +7,12 @@ import torch
 from torch import nn
 from torch.utils.data import TensorDataset
 
-# read in data
-dataset = pd.read_csv('data_utc/Seattle/data_utc.csv')
-mask = dataset['Year'] <= 2020
+# read in data, leave a gap year between training and target years
+dataset = pd.read_csv('data/target/data.csv')
+mask = dataset['Year'] <= 2022
 train_dataset = dataset[mask].copy()
-# mask = dataset['Year'] == 2021
-# valid_dataset = dataset[mask].copy()
-mask = dataset['Year'] == 2022
+mask = dataset['Year'] == 2024
 test_dataset = dataset[mask].copy()
-
 
 # initialize sample and batch sizes
 sample_size = len(train_dataset)
