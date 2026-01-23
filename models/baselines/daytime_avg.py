@@ -220,7 +220,7 @@ print("sMAPE:", test_smape)
 print("R^2:", test_r2.item())
 
 # save results
-with open("results/baseline_results/daytime_average.txt", 'w') as file:
+with open("results/baseline_results/daytime_avg.txt", 'w') as file:
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -246,5 +246,5 @@ plt.plot(range(72), test_preds[:72])
 plt.title("Daytime Average GHI Pred vs Actual")
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/baseline_results/daytime_average.pdf")
+plt.savefig("results/baseline_results/daytime_avg.pdf")
 plt.show(block=False)
