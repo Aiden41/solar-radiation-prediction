@@ -56,10 +56,10 @@ test_dataset = test_dataset.iloc[:-1]
 # drop unused columns and get values out of dataframe
 x_train = train_dataset[['Future_SZA', 'Future_CS_GHI', 'CSI']]
 y_train = train_dataset[['Future_CSI']]
-y_train_ghi = train_dataset[['GHI']]
+y_train_ghi = train_dataset[['Future_GHI']]
 x_test = test_dataset[['Future_SZA', 'Future_CS_GHI', 'CSI']]
 y_test = test_dataset[['Future_CSI']]
-y_test_ghi = test_dataset[['GHI']]
+y_test_ghi = test_dataset[['Future_GHI']]
 
 # create a mask of daytime hours to generate averages
 train_mask = (train_dataset['Solar Zenith Angle'] < 90)
