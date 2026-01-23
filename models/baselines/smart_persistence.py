@@ -54,10 +54,10 @@ train_dataset = train_dataset.iloc[:-1]
 test_dataset = test_dataset.iloc[:-1]
 
 # drop unused columns and get values out of dataframe
-x_train = train_dataset[['Future_SZA', 'Future_CS_GHI']]
+x_train = train_dataset[['Future_SZA', 'Future_CS_GHI', 'CSI']]
 y_train = train_dataset[['Future_CSI']]
 y_train_ghi = train_dataset[['GHI']]
-x_test = test_dataset[['Future_SZA', 'Future_CS_GHI']]
+x_test = test_dataset[['Future_SZA', 'Future_CS_GHI', 'CSI']]
 y_test = test_dataset[['Future_CSI']]
 y_test_ghi = test_dataset[['GHI']]
 
@@ -65,7 +65,6 @@ y_test_ghi = test_dataset[['GHI']]
 train_mask = (train_dataset['Solar Zenith Angle'] < 90)
 test_mask = (test_dataset['Solar Zenith Angle'] < 90)
 daytime_average = np.mean(train_dataset['CSI'][train_mask])
-# print("Daytime Average CSI: " + str(daytime_average))
 test_average = np.mean(test_dataset['CSI'][test_mask])
 
 x_train = x_train.to_numpy()
@@ -115,11 +114,11 @@ test_count = 0
 # training loop
 for id_batch, (x_batch, y_batch) in enumerate(dataset):
     if x_batch[0] < 90:
-        csi_pred = average
-        pred = csi_pred * x_batch[1]
+        csi_t = x_batch[2].item()
+        pred = csi_t * x_batch[1].item()
         csi_y = y_batch.item()
         y = csi_y * x_batch[1].item()
-        err = pred.item() - y
+        err = pred - y
 
         # MSE / MAE
         train_se += err**2
@@ -127,10 +126,10 @@ for id_batch, (x_batch, y_batch) in enumerate(dataset):
         train_count += 1
 
         # MBE
-        train_bias_sum += (pred.item() - y)
+        train_bias_sum += (pred - y)
 
         # sMAPE
-        denom = abs(y) + abs(pred.item())
+        denom = abs(y) + abs(pred)
         if denom != 0:
             train_smape_sum += 2 * abs(err) / denom
             train_smape_count += 1
@@ -138,18 +137,18 @@ for id_batch, (x_batch, y_batch) in enumerate(dataset):
         train_targets.append(y)
 
     else:
-        pred = zero
+        pred = zero.item()
     
     train_preds.append(pred)
 
 # testing loop
 for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
     if x_batch[0] < 90:
-        csi_pred = average
-        pred = csi_pred * x_batch[1]
+        csi_pred = x_batch[2].item()
+        pred = csi_pred * x_batch[1].item()
         csi_y = y_batch.item()
         y = csi_y * x_batch[1].item()
-        err = pred.item() - y
+        err = pred - y
 
         # MSE / MAE
         test_se += err**2
@@ -157,10 +156,10 @@ for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
         test_count += 1
 
         # MBE
-        test_bias_sum += (pred.item() - y)
+        test_bias_sum += (pred - y)
 
         #sMAPE
-        denom = abs(y) + abs(pred.item())
+        denom = abs(y) + abs(pred)
         if denom != 0:
             test_smape_sum += 2 * abs(err) / denom
             test_smape_count += 1
@@ -168,7 +167,7 @@ for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
         test_targets.append(y)
 
     else:
-        pred = zero
+        pred = zero.item()
     
     test_preds.append(pred)
 
@@ -220,7 +219,7 @@ print("sMAPE:", test_smape)
 print("R^2:", test_r2.item())
 
 # save results
-with open("results/baseline_results/daytime_average.txt", 'w') as file:
+with open("results/baseline_results/smart_persistence.txt", 'w') as file:
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -239,12 +238,11 @@ with open("results/baseline_results/daytime_average.txt", 'w') as file:
     file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2.item()))
 
-
 # plot the results
 plt.plot(range(72), y_test_ghi[:72])
 plt.plot(range(72), test_preds[:72])
-plt.title("Daytime Average GHI Pred vs Actual")
+plt.title("Smart Persistence GHI Pred vs Actual")
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/baseline_results/daytime_average.pdf")
+plt.savefig("results/baseline_results/smart_presistence.pdf")
 plt.show(block=False)
