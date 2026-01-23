@@ -241,9 +241,10 @@ with open("results/baseline_results/daytime_avg.txt", 'w') as file:
 
 
 # plot the results
-plt.plot(range(72), y_test_ghi[:72])
-plt.plot(range(72), test_preds[:72])
+plt.plot(range(72), y_test_ghi[:72], label="Actual")
+plt.plot(range(72), test_preds[:72], label="Predicted")
 plt.title("Daytime Average GHI Pred vs Actual")
+plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
 plt.savefig("results/baseline_results/daytime_avg.pdf")

@@ -232,9 +232,10 @@ with open("results/baseline_results/smart_persistence.txt", 'w') as file:
     file.write("R^2: " + str(test_r2.item()))
 
 # plot the results
-plt.plot(range(72), y_test_ghi[:72])
-plt.plot(range(72), test_preds[:72])
+plt.plot(range(72), y_test_ghi[:72], label="Actual")
+plt.plot(range(72), test_preds[:72], label="Predicted")
 plt.title("Smart Persistence GHI Pred vs Actual")
+plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
 plt.savefig("results/baseline_results/smart_persistence.pdf")
