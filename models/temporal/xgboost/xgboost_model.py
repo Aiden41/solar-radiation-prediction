@@ -158,7 +158,7 @@ results = model.evals_result()
 epochs = len(results['validation_0']['rmse'])
 x_axis = range(0, epochs)
 
-# this is for feature importance. get column names from above and compare.
+# feature importance
 # booster = model.get_booster()
 
 # importance_gain = booster.get_score(importance_type='gain')
