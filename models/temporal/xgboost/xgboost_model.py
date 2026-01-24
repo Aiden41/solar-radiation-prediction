@@ -5,6 +5,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from matplotlib import pyplot as plt
 from xgboost import XGBRegressor
+from sklearn.inspection import permutation_importance
 
 offset = 1 # number of hours ahead to predict
 
@@ -98,8 +99,10 @@ train_dataset = train_dataset.iloc[:-1]
 valid_dataset = valid_dataset.iloc[:-1]
 test_dataset = test_dataset.iloc[:-1]
 
+# all_columns = list(train_dataset.columns)
+
 future_columns = ['Future_SZA', 'Future_CS_GHI', 'Future_CS_DNI', 'Future_CS_DHI', 'Future_GHI', 'Future_CSI']
-drop_columns = ['Minute',  'Month', 'Hour', 'Year', 'Day', 'DayOfYear'] + future_columns
+drop_columns = ['Minute', 'Month', 'Hour', 'Year', 'Day', 'DayOfYear', 'Temperature', 'Alpha', 'Ozone', 'Dew Point', 'Surface Albedo', 'Pressure', 'Aerosol Optical Depth', 'Asymmetry', 'Solar Zenith Angle', 'Clearsky DNI', 'Clearsky DHI', 'Clearsky GHI'] + future_columns
 
 # drop unused columns and get values out of dataframe
 x_train = train_dataset.drop(columns = drop_columns)
@@ -118,20 +121,22 @@ y_train_ghi = y_train_ghi.to_numpy().flatten()
 y_valid_ghi = y_valid_ghi.to_numpy().flatten()
 y_test_ghi = y_test_ghi.to_numpy().flatten()
 
+remaining_columns = list(x_train.columns)
+# print(remaining_columns)
+
 # create a mask of daytime hours to generate averages
 train_mask = (train_dataset['Solar Zenith Angle'] < 90)
 valid_mask = (valid_dataset['Solar Zenith Angle'] < 90)
 test_mask = (test_dataset['Solar Zenith Angle'] < 90)
 daytime_average = np.mean(train_dataset['CSI'][train_mask])
 train_average_GHI = np.mean(train_dataset['GHI'][train_mask])
-# print("Daytime Average CSI: " + str(daytime_average))
 valid_average = np.mean(valid_dataset['CSI'][valid_mask])
 valid_average_GHI = np.mean(valid_dataset['GHI'][valid_mask])
 test_average = np.mean(test_dataset['CSI'][test_mask])
 test_average_GHI = np.mean(test_dataset['GHI'][test_mask])
 
 # get column titles for ColumnTransformer, excluding cyclical features
-x_columns = ['Temperature', 'Aerosol Optical Depth', 'Wind Speed', 'Wind Direction', 'Precipitable Water', 'Pressure', 'Surface Albedo', 'SSA', 'Relative Humidity', 'Dew Point', 'Asymmetry', 'Alpha', 'Ozone', 'GHI', 'DNI', 'DHI']
+x_columns = ['Wind Speed', 'Wind Direction', 'Precipitable Water', 'SSA', 'Relative Humidity']
 y_columns = list(y_train)
 
 # scale all specified input columns 
@@ -148,10 +153,28 @@ train_weights = np.where(train_dataset['Solar Zenith Angle'] >= 90, 0.0, 1.0)
 valid_weights = np.where(valid_dataset['Solar Zenith Angle'] >= 90, 0.0, 1.0)
 
 model = XGBRegressor(n_estimators=1000, eval_metric='rmse', early_stopping_rounds=100, eta=0.05)
-model.fit(x_train, y_train, sample_weight=train_weights, eval_set=[(x_train, y_train), (x_valid, y_valid)], sample_weight_eval_set=[train_weights, valid_weights])
+model.fit(x_train, y_train, sample_weight=train_weights, eval_set=[(x_train, y_train), (x_valid, y_valid)], sample_weight_eval_set=[train_weights, valid_weights], verbose=False)
 results = model.evals_result()
 epochs = len(results['validation_0']['rmse'])
 x_axis = range(0, epochs)
+
+# this is for feature importance. get column names from above and compare.
+# booster = model.get_booster()
+
+# importance_gain = booster.get_score(importance_type='gain')
+# importance_cover = booster.get_score(importance_type='cover')
+# importance_weight = booster.get_score(importance_type='weight')
+
+# importance = pd.DataFrame({
+#     'feature': list(importance_gain.keys()),
+#     'gain': list(importance_gain.values()),
+#     'cover': [importance_cover.get(f, 0) for f in importance_gain.keys()],
+#     'weight': [importance_weight.get(f, 0) for f in importance_gain.keys()]
+# })
+
+# importance.sort_values('gain', ascending=False)
+
+# print(importance)
 
 train_pred = model.predict(x_train)
 valid_pred = model.predict(x_valid)
