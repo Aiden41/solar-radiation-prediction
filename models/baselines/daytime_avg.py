@@ -159,11 +159,11 @@ test_count = 0
 # training loop
 for id_batch, (x_batch, y_batch) in enumerate(dataset):
     if x_batch[0] < 90:
-        csi_pred = average
-        pred = csi_pred * x_batch[1]
+        csi_pred = average.item()
+        pred = csi_pred * x_batch[1].item()
         csi_y = y_batch.item()
         y = csi_y * x_batch[1].item()
-        err = pred.item() - y
+        err = pred - y
 
         # MSE / MAE
         train_se += err**2
@@ -171,30 +171,30 @@ for id_batch, (x_batch, y_batch) in enumerate(dataset):
         train_count += 1
 
         # MBE
-        train_bias_sum += (pred.item() - y)
+        train_bias_sum += (pred - y)
 
         # sMAPE
-        denom = abs(y) + abs(pred.item())
-        if denom != 0:
-            train_smape_sum += 2 * abs(err) / denom
+        denom = (abs(csi_y) + abs(csi_pred)) / 2.0
+        if denom > 1e-6:
+            train_smape_sum += abs(csi_pred - csi_y) / denom
             train_smape_count += 1
 
-        train_preds_day.append(pred.item())
+        train_preds_day.append(pred)
         train_targets.append(y)
 
     else:
-        pred = zero
+        pred = zero.item()
     
-    train_preds.append(pred.item())
+    train_preds.append(pred)
 
 # validation loop
 for id_batch, (x_batch, y_batch) in enumerate(valid_dataset):
     if x_batch[0] < 90:
-        csi_pred = average
-        pred = csi_pred * x_batch[1]
+        csi_pred = average.item()
+        pred = csi_pred * x_batch[1].item()
         csi_y = y_batch.item()
         y = csi_y * x_batch[1].item()
-        err = pred.item() - y
+        err = pred - y
 
         # MSE / MAE
         valid_se += err**2
@@ -202,30 +202,30 @@ for id_batch, (x_batch, y_batch) in enumerate(valid_dataset):
         valid_count += 1
 
         # MBE
-        valid_bias_sum += (pred.item() - y)
+        valid_bias_sum += (pred - y)
 
         # sMAPE
-        denom = abs(y) + abs(pred.item())
-        if denom != 0:
-            valid_smape_sum += 2 * abs(err) / denom
+        denom = (abs(csi_y) + abs(csi_pred)) / 2.0
+        if denom > 1e-6:
+            valid_smape_sum += abs(csi_pred - csi_y) / denom
             valid_smape_count += 1
 
-        valid_preds_day.append(pred.item())
+        valid_preds_day.append(pred)
         valid_targets.append(y)
 
     else:
-        pred = zero
+        pred = zero.item()
     
-    valid_preds.append(pred.item())
+    valid_preds.append(pred)
 
 # testing loop
 for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
     if x_batch[0] < 90:
-        csi_pred = average
-        pred = csi_pred * x_batch[1]
+        csi_pred = average.item()
+        pred = csi_pred * x_batch[1].item()
         csi_y = y_batch.item()
         y = csi_y * x_batch[1].item()
-        err = pred.item() - y
+        err = pred - y
 
         # MSE / MAE
         test_se += err**2
@@ -233,21 +233,21 @@ for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
         test_count += 1
 
         # MBE
-        test_bias_sum += (pred.item() - y)
+        test_bias_sum += (pred - y)
 
-        #sMAPE
-        denom = abs(y) + abs(pred.item())
-        if denom != 0:
-            test_smape_sum += 2 * abs(err) / denom
+        # sMAPE
+        denom = (abs(csi_y) + abs(csi_pred)) / 2.0
+        if denom > 1e-6:
+            test_smape_sum += abs(csi_pred - csi_y) / denom
             test_smape_count += 1
 
-        test_preds_day.append(pred.item())
+        test_preds_day.append(pred)
         test_targets.append(y)
 
     else:
-        pred = zero
+        pred = zero.item()
     
-    test_preds.append(pred.item())
+    test_preds.append(pred)
 
 train_mse = train_se / train_count
 valid_mse = valid_se / valid_count

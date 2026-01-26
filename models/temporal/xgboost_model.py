@@ -217,12 +217,18 @@ valid_mbe = mbe(y_valid_ghi, valid_pred_ghi)
 test_mbe = mbe(y_test_ghi, test_pred_ghi)
 
 # sMAPE
-def smape(y_true, y_pred): 
-    return 100 * np.mean(2 * np.abs(y_pred - y_true) / (np.abs(y_true) + np.abs(y_pred) + 1e-6))
+def smape(y_true, y_pred):
+    y_true = np.asarray(y_true).flatten()
+    y_pred = np.asarray(y_pred).flatten()
 
-train_smape = smape(y_train_ghi, train_pred_ghi)
-valid_smape = smape(y_valid_ghi, valid_pred_ghi)
-test_smape = smape(y_test_ghi, test_pred_ghi)
+    den = (np.abs(y_true) + np.abs(y_pred)) / 2.0
+    mask = den > 1e-6
+
+    return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
+
+train_smape = smape(y_train, train_pred)
+valid_smape = smape(y_valid, valid_pred)
+test_smape = smape(y_test, test_pred)
 
 # R^2
 train_r2 = r2_score(y_train_ghi, train_pred_ghi)

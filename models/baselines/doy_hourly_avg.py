@@ -173,7 +173,7 @@ test_count = 0
 # training loop
 for id_batch, (x_batch, y_batch) in enumerate(dataset):
     if x_batch[0] < 90:
-        csi_pred = averages[int(x_batch[2].item())][int(x_batch[3].item())]
+        csi_pred = averages[int(x_batch[2].item())][int(x_batch[3].item())].item()
         pred = csi_pred * x_batch[1]
         csi_y = y_batch.item()
         y = csi_y * x_batch[1].item()
@@ -188,9 +188,9 @@ for id_batch, (x_batch, y_batch) in enumerate(dataset):
         train_bias_sum += (pred.item() - y)
 
         # sMAPE
-        denom = abs(y) + abs(pred.item())
-        if denom != 0:
-            train_smape_sum += 2 * abs(err) / denom
+        denom = (abs(csi_y) + abs(csi_pred)) / 2.0
+        if denom > 1e-6:
+            train_smape_sum += abs(csi_pred - csi_y) / denom
             train_smape_count += 1
 
         train_preds_day.append(pred.item())
@@ -204,7 +204,7 @@ for id_batch, (x_batch, y_batch) in enumerate(dataset):
 # validation loop
 for id_batch, (x_batch, y_batch) in enumerate(valid_dataset):
     if x_batch[0] < 90:
-        csi_pred = averages[int(x_batch[2].item())][int(x_batch[3].item())]
+        csi_pred = averages[int(x_batch[2].item())][int(x_batch[3].item())].item()
         pred = csi_pred * x_batch[1]
         csi_y = y_batch.item()
         y = csi_y * x_batch[1].item()
@@ -218,10 +218,10 @@ for id_batch, (x_batch, y_batch) in enumerate(valid_dataset):
         # MBE
         valid_bias_sum += (pred.item() - y)
 
-        #sMAPE
-        denom = abs(y) + abs(pred.item())
-        if denom != 0:
-            valid_smape_sum += 2 * abs(err) / denom
+        # sMAPE
+        denom = (abs(csi_y) + abs(csi_pred)) / 2.0
+        if denom > 1e-6:
+            valid_smape_sum += abs(csi_pred - csi_y) / denom
             valid_smape_count += 1
 
         valid_preds_day.append(pred.item())
@@ -235,7 +235,7 @@ for id_batch, (x_batch, y_batch) in enumerate(valid_dataset):
 # testing loop
 for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
     if x_batch[0] < 90:
-        csi_pred = averages[int(x_batch[2].item())][int(x_batch[3].item())]
+        csi_pred = averages[int(x_batch[2].item())][int(x_batch[3].item())].item()
         pred = csi_pred * x_batch[1]
         csi_y = y_batch.item()
         y = csi_y * x_batch[1].item()
@@ -249,10 +249,10 @@ for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
         # MBE
         test_bias_sum += (pred.item() - y)
 
-        #sMAPE
-        denom = abs(y) + abs(pred.item())
-        if denom != 0:
-            test_smape_sum += 2 * abs(err) / denom
+        # sMAPE
+        denom = (abs(csi_y) + abs(csi_pred)) / 2.0
+        if denom > 1e-6:
+            test_smape_sum += abs(csi_pred - csi_y) / denom
             test_smape_count += 1
 
         test_preds_day.append(pred.item())
