@@ -187,12 +187,12 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = MLP(input_dim=x_train.shape[1]).to(device)
 
 # set other various parameters
-criterion = nn.MSELoss()
-learning_rate = 0.001
+criterion = nn.SmoothL1Loss(beta=0.1)
+learning_rate = 0.0015
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
 num_epochs = 100
-batch_size = 256
+batch_size = 1024
 
 # --- Prepare daytime-only training data ---
 day_mask = train_dataset['Future_SZA'] < 90
@@ -220,7 +220,7 @@ for epoch in range(num_epochs):
         optimizer.zero_grad()
         preds = model(xb)
 
-        loss = ((preds - yb)**2).mean()
+        loss = criterion(preds, yb)
 
         loss.backward()
         optimizer.step()

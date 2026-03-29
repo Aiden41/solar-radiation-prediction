@@ -152,7 +152,7 @@ y_test = y_test.to_numpy()
 train_weights = np.where(train_dataset['Solar Zenith Angle'] >= 90, 0.0, 1.0)
 valid_weights = np.where(valid_dataset['Solar Zenith Angle'] >= 90, 0.0, 1.0)
 
-model = XGBRegressor(n_estimators=1000, eval_metric='rmse', early_stopping_rounds=100, eta=0.05)
+model = XGBRegressor(n_estimators=1000, eval_metric="rmse", objective="reg:pseudohubererror", early_stopping_rounds=100, eta=0.05)
 model.fit(x_train, y_train, sample_weight=train_weights, eval_set=[(x_train, y_train), (x_valid, y_valid)], sample_weight_eval_set=[train_weights, valid_weights], verbose=False)
 results = model.evals_result()
 epochs = len(results['validation_0']['rmse'])
@@ -228,7 +228,7 @@ def mbe(y_true, y_pred):
 
 train_mbe = mbe(train_true, train_pred_day)
 valid_mbe = mbe(valid_true, valid_pred_day)
-test_mbe  = mbe(test_true,  test_pred_day)
+test_mbe  = mbe(test_true, test_pred_day)
 
 # sMAPE
 def smape(y_true, y_pred):
@@ -240,12 +240,12 @@ def smape(y_true, y_pred):
 
 train_smape = smape(train_true, train_pred_day)
 valid_smape = smape(valid_true, valid_pred_day)
-test_smape  = smape(test_true,  test_pred_day)
+test_smape  = smape(test_true, test_pred_day)
 
 # R^2
 train_r2 = r2_score(train_true, train_pred_day)
 valid_r2 = r2_score(valid_true, valid_pred_day)
-test_r2  = r2_score(test_true,  test_pred_day)
+test_r2  = r2_score(test_true, test_pred_day)
 
 # print results
 print("Training Error")
