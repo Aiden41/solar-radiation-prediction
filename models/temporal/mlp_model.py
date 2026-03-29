@@ -334,7 +334,7 @@ print("sMAPE:", test_smape)
 print("R^2:", test_r2)
 
 # save results
-with open("results/model_results/mlp.txt", 'w') as file:
+with open("results/temporal_results/mlp.txt", 'w') as file:
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -369,5 +369,5 @@ plt.title("MLP GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/model_results/mlp.pdf")
+plt.savefig("results/temporal_results/mlp.pdf")
 plt.show(block=False)
