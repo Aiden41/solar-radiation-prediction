@@ -144,14 +144,6 @@ train_bias_sum = 0.0
 valid_bias_sum = 0.0
 test_bias_sum = 0.0
 
-train_smape_sum = 0.0
-valid_smape_sum = 0.0 
-test_smape_sum = 0.0
-
-train_smape_count = 0
-valid_smape_count = 0
-test_smape_count = 0
-
 train_count = 0
 valid_count = 0
 test_count = 0
@@ -172,12 +164,6 @@ for id_batch, (x_batch, y_batch) in enumerate(dataset):
 
         # MBE
         train_bias_sum += (pred - y)
-
-        # sMAPE
-        denom = (abs(csi_y) + abs(csi_pred)) / 2.0
-        if denom > 1e-6:
-            train_smape_sum += abs(csi_pred - csi_y) / denom
-            train_smape_count += 1
 
         train_preds_day.append(pred)
         train_targets.append(y)
@@ -204,12 +190,6 @@ for id_batch, (x_batch, y_batch) in enumerate(valid_dataset):
         # MBE
         valid_bias_sum += (pred - y)
 
-        # sMAPE
-        denom = (abs(csi_y) + abs(csi_pred)) / 2.0
-        if denom > 1e-6:
-            valid_smape_sum += abs(csi_pred - csi_y) / denom
-            valid_smape_count += 1
-
         valid_preds_day.append(pred)
         valid_targets.append(y)
 
@@ -235,12 +215,6 @@ for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
         # MBE
         test_bias_sum += (pred - y)
 
-        # sMAPE
-        denom = (abs(csi_y) + abs(csi_pred)) / 2.0
-        if denom > 1e-6:
-            test_smape_sum += abs(csi_pred - csi_y) / denom
-            test_smape_count += 1
-
         test_preds_day.append(pred)
         test_targets.append(y)
 
@@ -248,6 +222,15 @@ for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
         pred = zero.item()
     
     test_preds.append(pred)
+
+def smape(y_true, y_pred):
+    y_true = np.asarray(y_true).flatten()
+    y_pred = np.asarray(y_pred).flatten()
+
+    den = (np.abs(y_true) + np.abs(y_pred)) / 2.0
+    mask = den > 1e-6
+
+    return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
 
 train_mse = train_se / train_count
 valid_mse = valid_se / valid_count
@@ -265,9 +248,9 @@ train_mbe = train_bias_sum / train_count
 valid_mbe = valid_bias_sum / valid_count
 test_mbe = test_bias_sum / test_count
 
-train_smape = train_smape_sum / train_smape_count
-valid_smape = valid_smape_sum / valid_smape_count
-test_smape = test_smape_sum / test_smape_count
+train_smape = smape(train_targets, train_preds_day)
+valid_smape = smape(valid_targets, valid_preds_day)
+test_smape  = smape(test_targets,  test_preds_day)
 
 train_targets = np.asarray(train_targets)
 train_preds_day = np.asarray(train_preds_day)

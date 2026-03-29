@@ -47,22 +47,6 @@ valid_dataset.loc[mask, 'CSI'] = 0.0
 mask = test_dataset['Solar Zenith Angle'] >= 90
 test_dataset.loc[mask, 'CSI'] = 0.0
 
-# generate csi averages for each hour of each day of the year
-averages = {}
-for day in range(1,366):
-    hours_in_day = []
-    for hour in range(0,24):
-        hour_to_guess = hour+1
-        if hour == 23:
-            hour_to_guess=0
-        mask = (train_dataset['Hour'] == hour_to_guess) & (train_dataset['DayOfYear'] == day) & (train_dataset['Solar Zenith Angle'] < 90)
-        csi_vals = train_dataset['CSI'][mask]
-        avg = np.mean(csi_vals)
-        if len(csi_vals) == 0:
-            avg = 0.0
-        hours_in_day.append(torch.FloatTensor([avg]))
-    averages[day] = hours_in_day
-
 # move up deterministic columns and place into new columns
 train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-1)
 valid_dataset["Future_SZA"] = valid_dataset["Solar Zenith Angle"].shift(-1)
@@ -88,28 +72,24 @@ train_dataset["Future_CSI"] = train_dataset["CSI"].shift(-1)
 valid_dataset["Future_CSI"] = valid_dataset["CSI"].shift(-1)
 test_dataset["Future_CSI"] = test_dataset["CSI"].shift(-1)
 
-train_dataset["Future_DOY"] = train_dataset["DayOfYear"].shift(-1)
-valid_dataset["Future_DOY"] = valid_dataset["DayOfYear"].shift(-1)
-test_dataset["Future_DOY"] = test_dataset["DayOfYear"].shift(-1)
-
 train_dataset = train_dataset.iloc[:-1]
 valid_dataset = valid_dataset.iloc[:-1]
 test_dataset = test_dataset.iloc[:-1]
 
 # drop unused columns and get values out of dataframe
-x_train = train_dataset[['Future_SZA', 'Future_CS_GHI', 'Future_DOY', 'Hour']]
-y_train = train_dataset[['Future_CSI']]
-y_train_ghi = train_dataset[['Future_GHI']]
-x_valid = valid_dataset[['Future_SZA', 'Future_CS_GHI', 'Future_DOY', 'Hour']]
-y_valid = valid_dataset[['Future_CSI']]
-y_valid_ghi = valid_dataset[['Future_GHI']]
-x_test = test_dataset[['Future_SZA', 'Future_CS_GHI', 'Future_DOY', 'Hour']]
-y_test = test_dataset[['Future_CSI']]
-y_test_ghi = test_dataset[['Future_GHI']]
+# inputs: Future SZA (for masking) + current GHI
+x_train = train_dataset[['Future_SZA', 'GHI']]
+y_train = train_dataset[['Future_GHI']]
 
-# create a mask of daytime hours to generate averages
-train_mask = (train_dataset['Solar Zenith Angle'] < 90)
-test_mask = (test_dataset['Solar Zenith Angle'] < 90)
+x_valid = valid_dataset[['Future_SZA', 'GHI']]
+y_valid = valid_dataset[['Future_GHI']]
+
+x_test = test_dataset[['Future_SZA', 'GHI']]
+y_test = test_dataset[['Future_GHI']]
+
+y_train_ghi = y_train.copy()
+y_valid_ghi = y_valid.copy()
+y_test_ghi = y_test.copy()
 
 x_train = x_train.to_numpy()
 x_valid = x_valid.to_numpy()
@@ -125,9 +105,9 @@ zero = [0.0]
 x_train = torch.FloatTensor(x_train)
 x_valid = torch.FloatTensor(x_valid)
 x_test = torch.FloatTensor(x_test)
-y_train = torch.FloatTensor(y_train)
-y_valid = torch.FloatTensor(y_valid)
-y_test = torch.FloatTensor(y_test)
+y_train = torch.FloatTensor(y_train.copy())
+y_valid = torch.FloatTensor(y_valid.copy())
+y_test = torch.FloatTensor(y_test.copy())
 zero = torch.FloatTensor(np.array(zero))
 
 # create training and validation datasets 
@@ -165,11 +145,9 @@ test_count = 0
 # training loop
 for id_batch, (x_batch, y_batch) in enumerate(dataset):
     if x_batch[0] < 90:
-        csi_pred = averages[int(x_batch[2].item())][int(x_batch[3].item())].item()
-        pred = csi_pred * x_batch[1]
-        csi_y = y_batch.item()
-        y = csi_y * x_batch[1].item()
-        err = pred.item() - y
+        pred = x_batch[1].item()
+        y = y_batch.item()
+        err = pred - y
 
         # MSE / MAE
         train_se += err**2
@@ -177,24 +155,22 @@ for id_batch, (x_batch, y_batch) in enumerate(dataset):
         train_count += 1
 
         # MBE
-        train_bias_sum += (pred.item() - y)
+        train_bias_sum += err
 
-        train_preds_day.append(pred.item())
+        train_preds_day.append(pred)
         train_targets.append(y)
 
     else:
-        pred = zero
+        pred = zero.item()
     
-    train_preds.append(pred.item())
+    train_preds.append(pred)
 
 # validation loop
 for id_batch, (x_batch, y_batch) in enumerate(valid_dataset):
     if x_batch[0] < 90:
-        csi_pred = averages[int(x_batch[2].item())][int(x_batch[3].item())].item()
-        pred = csi_pred * x_batch[1]
-        csi_y = y_batch.item()
-        y = csi_y * x_batch[1].item()
-        err = pred.item() - y
+        pred = x_batch[1].item()
+        y = y_batch.item()
+        err = pred - y
 
         # MSE / MAE
         valid_se += err**2
@@ -202,24 +178,22 @@ for id_batch, (x_batch, y_batch) in enumerate(valid_dataset):
         valid_count += 1
 
         # MBE
-        valid_bias_sum += (pred.item() - y)
+        valid_bias_sum += err
 
-        valid_preds_day.append(pred.item())
+        valid_preds_day.append(pred)
         valid_targets.append(y)
 
     else:
-        pred = zero
+        pred = zero.item()
     
-    valid_preds.append(pred.item())
+    valid_preds.append(pred)
 
 # testing loop
 for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
     if x_batch[0] < 90:
-        csi_pred = averages[int(x_batch[2].item())][int(x_batch[3].item())].item()
-        pred = csi_pred * x_batch[1]
-        csi_y = y_batch.item()
-        y = csi_y * x_batch[1].item()
-        err = pred.item() - y
+        pred = x_batch[1].item()
+        y = y_batch.item()
+        err = pred - y
 
         # MSE / MAE
         test_se += err**2
@@ -227,15 +201,15 @@ for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
         test_count += 1
 
         # MBE
-        test_bias_sum += (pred.item() - y)
+        test_bias_sum += err
 
-        test_preds_day.append(pred.item())
+        test_preds_day.append(pred)
         test_targets.append(y)
 
     else:
-        pred = zero
+        pred = zero.item()
     
-    test_preds.append(pred.item())
+    test_preds.append(pred)
 
 def smape(y_true, y_pred):
     y_true = np.asarray(y_true).flatten()
@@ -316,7 +290,7 @@ print("sMAPE:", test_smape)
 print("R^2:", test_r2)
 
 # save results
-with open("results/baseline_results/doy_hourly_avg.txt", 'w') as file:
+with open("results/baseline_results/persistence.txt", 'w') as file:
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -344,13 +318,12 @@ with open("results/baseline_results/doy_hourly_avg.txt", 'w') as file:
     file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2))
 
-
 # plot the results
 plt.plot(range(72), y_test_ghi[:72], label="Actual")
 plt.plot(range(72), test_preds[:72], label="Predicted")
-plt.title("Day of Year Hourly Average GHI Pred vs Actual")
+plt.title("Persistence GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/baseline_results/doy_hourly_avg.pdf")
+plt.savefig("results/baseline_results/persistence.pdf")
 plt.show(block=False)
