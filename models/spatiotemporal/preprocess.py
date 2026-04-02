@@ -3,8 +3,6 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.compose import ColumnTransformer
 
-offset = 1 # number of hours ahead to predict
-
 all_x_train_raw = []
 all_x_valid_raw = []
 all_x_test_raw = []
@@ -118,9 +116,9 @@ for x in range(1,8):
         remaining_columns = list(x_train.columns)
         # print(remaining_columns)
 
-        all_x_train_raw.append(x_train)
-        all_x_valid_raw.append(x_valid)
-        all_x_test_raw.append(x_test)
+        all_x_train_raw.append(x_train.copy())
+        all_x_valid_raw.append(x_valid.copy())
+        all_x_test_raw.append(x_test.copy())
 
         if x == 4 and y == 4:
             # create a mask of daytime hours to generate averages
