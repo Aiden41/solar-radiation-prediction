@@ -2,4 +2,4 @@
 notes.txt
 data/row*/*/*.csv
 saves/preprocessed
-data/target/
+data/target
