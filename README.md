@@ -1,6 +1,6 @@
 Codebase for solar radiation prediction research.
 
-Current development is on developing deep learning models.
+Current development is on developing deep learning models. 
 
 Future work includes creating various plots for paper figures.  
 
