@@ -1,3 +1,5 @@
 .vscode
 notes.txt
-data/row*
+data/row*/*/*.csv
+saves/preprocessed
+data/target/

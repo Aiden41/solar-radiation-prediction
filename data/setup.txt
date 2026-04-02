@@ -11,3 +11,13 @@
 (47.52, -122.54)   (47.52, -122.47)   (47.52, -122.41)   (47.52, -122.34)   (47.52, -122.27)   (47.52, -122.21)   (47.52, -122.14)
 
 (47.48, -122.54)   (47.48, -122.47)   (47.48, -122.41)   (47.48, -122.34)   (47.48, -122.27)   (47.48, -122.21)   (47.48, -122.14)
+
+Create one folder for each row.
+data/row1/
+data/row2/ ...
+
+Inside each row folder, create subfolders for each point.
+data/row1/1/ 
+data/row1/2/ ... 
+
+Place CSVs from NSRDB in corresponding folders, then run format.py. 

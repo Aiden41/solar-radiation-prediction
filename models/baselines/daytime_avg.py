@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import TensorDataset
 
 # read in data
-dataset = pd.read_csv('data/target/data.csv')
+dataset = pd.read_csv('data/row4/4/data.csv')
 mask = dataset['Year'] <= 2022
 train_dataset = dataset[mask].copy()
 mask = dataset['Year'] == 2023
@@ -267,7 +267,7 @@ test_mbe = test_bias_sum / test_count
 
 train_smape = smape(train_targets, train_preds_day)
 valid_smape = smape(valid_targets, valid_preds_day)
-test_smape  = smape(test_targets,  test_preds_day)
+test_smape = smape(test_targets, test_preds_day)
 
 train_targets = np.asarray(train_targets)
 train_preds_day = np.asarray(train_preds_day)
@@ -275,7 +275,7 @@ train_preds_day = np.asarray(train_preds_day)
 valid_targets = np.asarray(valid_targets)
 valid_preds_day = np.asarray(valid_preds_day)
 
-test_targets  = np.asarray(test_targets)
+test_targets = np.asarray(test_targets)
 test_preds_day = np.asarray(test_preds_day)
 
 train_mean_y = np.mean(train_targets)
@@ -330,12 +330,12 @@ test_pred_csi = np.asarray(test_pred_csi)
 # CSI MAE
 train_csi_mae = np.mean(np.abs(train_true_csi - train_pred_csi))
 valid_csi_mae = np.mean(np.abs(valid_true_csi - valid_pred_csi))
-test_csi_mae = np.mean(np.abs(test_true_csi  - test_pred_csi))
+test_csi_mae = np.mean(np.abs(test_true_csi - test_pred_csi))
 
 # CSI sMAPE
 train_csi_smape = smape(train_true_csi, train_pred_csi)
 valid_csi_smape = smape(valid_true_csi, valid_pred_csi)
-test_csi_smape = smape(test_true_csi,  test_pred_csi)
+test_csi_smape = smape(test_true_csi, test_pred_csi)
 
 # CSI R^2
 train_csi_mean = np.mean(train_true_csi)
@@ -344,9 +344,9 @@ test_csi_mean = np.mean(test_true_csi)
 
 train_csi_r2 = 1 - np.sum((train_true_csi - train_pred_csi)**2) / np.sum((train_true_csi - train_csi_mean)**2)
 valid_csi_r2 = 1 - np.sum((valid_true_csi - valid_pred_csi)**2) / np.sum((valid_true_csi - valid_csi_mean)**2)
-test_csi_r2 = 1 - np.sum((test_true_csi  - test_pred_csi)**2) / np.sum((test_true_csi  - test_csi_mean)**2)
+test_csi_r2 = 1 - np.sum((test_true_csi - test_pred_csi)**2) / np.sum((test_true_csi - test_csi_mean)**2)
 
-print("\n\nCSI-SPACE METRICS")
+print("\nCSI-SPACE METRICS")
 print("Training Error")
 print("MAE: ", train_csi_mae)
 print("sMAPE: ", train_csi_smape)
@@ -392,7 +392,7 @@ with open("results/baseline_results/daytime_avg.txt", 'w') as file:
     file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2) + "\n")
 
-    file.write("\n\nCSI-SPACE METRICS\n")
+    file.write("\nCSI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MAE: " + str(train_csi_mae) + "\n")
     file.write("sMAPE: " + str(train_csi_smape) + "\n")

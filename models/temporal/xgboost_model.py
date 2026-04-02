@@ -10,7 +10,7 @@ from sklearn.inspection import permutation_importance
 offset = 1 # number of hours ahead to predict
 
 # read in data
-dataset = pd.read_csv('data/target/data.csv')
+dataset = pd.read_csv('data/row4/4/data.csv')
 dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
 mask = dataset['Year'] <= 2022
 train_dataset = dataset[mask].copy()
@@ -188,39 +188,37 @@ train_pred_ghi = train_pred * train_dataset['Future_CS_GHI'].to_numpy()
 valid_pred_ghi = valid_pred * valid_dataset['Future_CS_GHI'].to_numpy() 
 test_pred_ghi = test_pred * test_dataset['Future_CS_GHI'].to_numpy()
 
-# Create daytime mask based on the FUTURE solar zenith angle
 train_mask = train_dataset['Future_SZA'] < 90
 valid_mask = valid_dataset['Future_SZA'] < 90
-test_mask  = test_dataset['Future_SZA']  < 90
+test_mask = test_dataset['Future_SZA'] < 90
 
-# Apply mask to GHI predictions and targets
 train_true = y_train_ghi[train_mask]
 valid_true = y_valid_ghi[valid_mask]
-test_true  = y_test_ghi[test_mask]
+test_true = y_test_ghi[test_mask]
 
 train_pred_day = train_pred_ghi[train_mask]
 valid_pred_day = valid_pred_ghi[valid_mask]
-test_pred_day  = test_pred_ghi[test_mask]
+test_pred_day = test_pred_ghi[test_mask]
 
 # MSE
 train_mse = mean_squared_error(train_true, train_pred_day)
 valid_mse = mean_squared_error(valid_true, valid_pred_day)
-test_mse  = mean_squared_error(test_true,  test_pred_day)
+test_mse = mean_squared_error(test_true, test_pred_day)
 
 # RMSE
 train_rmse = np.sqrt(train_mse)
 valid_rmse = np.sqrt(valid_mse)
-test_rmse  = np.sqrt(test_mse)
+test_rmse = np.sqrt(test_mse)
 
 # NRMSE (normalize by daytime mean GHI)
 train_nrmse = train_rmse / train_average_GHI
 valid_nrmse = valid_rmse / valid_average_GHI
-test_nrmse  = test_rmse  / test_average_GHI
+test_nrmse = test_rmse / test_average_GHI
 
 # MAE
 train_mae = mean_absolute_error(train_true, train_pred_day)
 valid_mae = mean_absolute_error(valid_true, valid_pred_day)
-test_mae  = mean_absolute_error(test_true,  test_pred_day)
+test_mae = mean_absolute_error(test_true, test_pred_day)
 
 # MBE
 def mbe(y_true, y_pred):
@@ -228,7 +226,7 @@ def mbe(y_true, y_pred):
 
 train_mbe = mbe(train_true, train_pred_day)
 valid_mbe = mbe(valid_true, valid_pred_day)
-test_mbe  = mbe(test_true, test_pred_day)
+test_mbe = mbe(test_true, test_pred_day)
 
 # sMAPE
 def smape(y_true, y_pred):
@@ -240,12 +238,12 @@ def smape(y_true, y_pred):
 
 train_smape = smape(train_true, train_pred_day)
 valid_smape = smape(valid_true, valid_pred_day)
-test_smape  = smape(test_true, test_pred_day)
+test_smape = smape(test_true, test_pred_day)
 
 # R^2
 train_r2 = r2_score(train_true, train_pred_day)
 valid_r2 = r2_score(valid_true, valid_pred_day)
-test_r2  = r2_score(test_true, test_pred_day)
+test_r2 = r2_score(test_true, test_pred_day)
 
 # print results
 print("GHI-SPACE METRICS")
@@ -276,31 +274,30 @@ print("MBE:", test_mbe)
 print("sMAPE:", test_smape)
 print("R^2:", test_r2)
 
-# Extract daytime CSI truth and predictions
 train_true_csi = y_train[train_mask].flatten()
 valid_true_csi = y_valid[valid_mask].flatten()
-test_true_csi  = y_test[test_mask].flatten()
+test_true_csi = y_test[test_mask].flatten()
 
 train_pred_csi = train_pred[train_mask]
 valid_pred_csi = valid_pred[valid_mask]
-test_pred_csi  = test_pred[test_mask]
+test_pred_csi = test_pred[test_mask]
 
 # CSI MAE
 train_csi_mae = mean_absolute_error(train_true_csi, train_pred_csi)
 valid_csi_mae = mean_absolute_error(valid_true_csi, valid_pred_csi)
-test_csi_mae  = mean_absolute_error(test_true_csi,  test_pred_csi)
+test_csi_mae = mean_absolute_error(test_true_csi, test_pred_csi)
 
 # CSI sMAPE
 train_csi_smape = smape(train_true_csi, train_pred_csi)
 valid_csi_smape = smape(valid_true_csi, valid_pred_csi)
-test_csi_smape  = smape(test_true_csi,  test_pred_csi)
+test_csi_smape = smape(test_true_csi, test_pred_csi)
 
 # CSI R^2
 train_csi_r2 = r2_score(train_true_csi, train_pred_csi)
 valid_csi_r2 = r2_score(valid_true_csi, valid_pred_csi)
-test_csi_r2  = r2_score(test_true_csi,  test_pred_csi)
+test_csi_r2 = r2_score(test_true_csi, test_pred_csi)
 
-print("\n\nCSI-SPACE METRICS")
+print("\nCSI-SPACE METRICS")
 print("Training Error")
 print("MAE: ", train_csi_mae)
 print("sMAPE: ", train_csi_smape)
@@ -346,7 +343,7 @@ with open("results/temporal_results/xgboost.txt", 'w') as file:
     file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2) + "\n")
 
-    file.write("\n\nCSI-SPACE METRICS\n")
+    file.write("\nCSI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MAE: " + str(train_csi_mae) + "\n")
     file.write("sMAPE: " + str(train_csi_smape) + "\n")
