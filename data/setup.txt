@@ -21,3 +21,5 @@ data/row1/1/
 data/row1/2/ ... 
 
 Place CSVs from NSRDB in corresponding folders, then run format.py. 
+
+For single point models, you only need the data for data/row4/4/
