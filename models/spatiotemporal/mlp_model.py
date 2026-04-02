@@ -302,8 +302,9 @@ with open("results/spatiotemporal_results/mlp.txt", 'w') as file:
     file.write("R^2: " + str(test_csi_r2))
 
 # plot the results
-plt.plot(range(72), y_test_ghi[:72], label="Actual")
-plt.plot(range(72), test_pred_ghi[:72], label="Predicted")
+hours = np.arange(864) * (5/60) # 5 minutes to hours
+plt.plot(hours, y_test_ghi[:864], label="Actual")
+plt.plot(hours, test_pred_ghi[:864], label="Predicted")
 plt.title("MLP GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")

@@ -8,10 +8,10 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-offset = 12 # number of hours ahead to predict
+offset = 1 # number of hours ahead to predict
 
 # read in data
-dataset = pd.read_csv('data/5min/row4/4/data.csv')
+dataset = pd.read_csv('data/1hr/row4/4/data.csv')
 dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
 mask = dataset['Year'] <= 2022
 train_dataset = dataset[mask].copy()
@@ -370,7 +370,7 @@ print("sMAPE: ", test_csi_smape)
 print("R^2: ", test_csi_r2)
 
 # save results
-with open("results/temporal_results/mlp.txt", 'w') as file:
+with open("results/other/temporal_hour_res/mlp.txt", 'w') as file:
     file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
@@ -416,12 +416,11 @@ with open("results/temporal_results/mlp.txt", 'w') as file:
     file.write("R^2: " + str(test_csi_r2))
 
 # plot the results
-hours = np.arange(864) * (5/60) # 5 minutes to hours
-plt.plot(hours, y_test_ghi[:864], label="Actual")
-plt.plot(hours, test_pred_ghi[:864], label="Predicted")
+plt.plot(range(72), y_test_ghi[:72], label="Actual")
+plt.plot(range(72), test_pred_ghi[:72], label="Predicted")
 plt.title("MLP GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/temporal_results/mlp.pdf")
+plt.savefig("results/other/temporal_hour_res/mlp.pdf")
 plt.show(block=False)

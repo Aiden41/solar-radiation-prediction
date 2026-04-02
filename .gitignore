@@ -1,5 +1,6 @@
 .vscode
 notes.txt
-data/row*/*/*.csv
+data/1hr
+data/5min
 saves/*
 data/target

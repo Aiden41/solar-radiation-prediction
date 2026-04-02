@@ -4,7 +4,7 @@ import pandas as pd
 columns = ["Year","Month","Day","Hour","Minute","Temperature","Aerosol Optical Depth","Wind Speed","Wind Direction","Precipitable Water","Pressure","Surface Albedo","SSA","Solar Zenith Angle","Relative Humidity","Cloud Type","Dew Point","GHI","Asymmetry","Alpha","DHI","DNI","Ozone","Clearsky GHI","Clearsky DNI","Clearsky DHI"]
 
 for x in range(1,8):
-    path = f"data/row{x}/"
+    path = f"data/5min/row{x}/"
     for folder in os.listdir(path):
         dataset = []
         for file in os.listdir(path + folder):

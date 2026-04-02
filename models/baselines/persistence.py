@@ -4,8 +4,10 @@ from matplotlib import pyplot as plt
 import torch
 from torch.utils.data import TensorDataset
 
+offset = 12
+
 # read in data
-dataset = pd.read_csv('data/row4/4/data.csv')
+dataset = pd.read_csv('data/5min/row4/4/data.csv')
 mask = dataset['Year'] <= 2022
 train_dataset = dataset[mask].copy()
 mask = dataset['Year'] == 2023
@@ -48,33 +50,33 @@ mask = test_dataset['Solar Zenith Angle'] >= 90
 test_dataset.loc[mask, 'CSI'] = 0.0
 
 # move up deterministic columns and place into new columns
-train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-1)
-valid_dataset["Future_SZA"] = valid_dataset["Solar Zenith Angle"].shift(-1)
-test_dataset["Future_SZA"] = test_dataset["Solar Zenith Angle"].shift(-1)
+train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-offset)
+valid_dataset["Future_SZA"] = valid_dataset["Solar Zenith Angle"].shift(-offset)
+test_dataset["Future_SZA"] = test_dataset["Solar Zenith Angle"].shift(-offset)
 
-train_dataset["Future_CS_GHI"] = train_dataset["Clearsky GHI"].shift(-1)
-valid_dataset["Future_CS_GHI"] = valid_dataset["Clearsky GHI"].shift(-1)
-test_dataset["Future_CS_GHI"] = test_dataset["Clearsky GHI"].shift(-1)
+train_dataset["Future_CS_GHI"] = train_dataset["Clearsky GHI"].shift(-offset)
+valid_dataset["Future_CS_GHI"] = valid_dataset["Clearsky GHI"].shift(-offset)
+test_dataset["Future_CS_GHI"] = test_dataset["Clearsky GHI"].shift(-offset)
 
-train_dataset["Future_CS_DNI"] = train_dataset["Clearsky DNI"].shift(-1)
-valid_dataset["Future_CS_DNI"] = valid_dataset["Clearsky DNI"].shift(-1)
-test_dataset["Future_CS_DNI"] = test_dataset["Clearsky DNI"].shift(-1)
+train_dataset["Future_CS_DNI"] = train_dataset["Clearsky DNI"].shift(-offset)
+valid_dataset["Future_CS_DNI"] = valid_dataset["Clearsky DNI"].shift(-offset)
+test_dataset["Future_CS_DNI"] = test_dataset["Clearsky DNI"].shift(-offset)
 
-train_dataset["Future_CS_DHI"] = train_dataset["Clearsky DHI"].shift(-1)
-valid_dataset["Future_CS_DHI"] = valid_dataset["Clearsky DHI"].shift(-1)
-test_dataset["Future_CS_DHI"] = test_dataset["Clearsky DHI"].shift(-1)
+train_dataset["Future_CS_DHI"] = train_dataset["Clearsky DHI"].shift(-offset)
+valid_dataset["Future_CS_DHI"] = valid_dataset["Clearsky DHI"].shift(-offset)
+test_dataset["Future_CS_DHI"] = test_dataset["Clearsky DHI"].shift(-offset)
 
-train_dataset["Future_GHI"] = train_dataset["GHI"].shift(-1)
-valid_dataset["Future_GHI"] = valid_dataset["GHI"].shift(-1)
-test_dataset["Future_GHI"] = test_dataset["GHI"].shift(-1)
+train_dataset["Future_GHI"] = train_dataset["GHI"].shift(-offset)
+valid_dataset["Future_GHI"] = valid_dataset["GHI"].shift(-offset)
+test_dataset["Future_GHI"] = test_dataset["GHI"].shift(-offset)
 
-train_dataset["Future_CSI"] = train_dataset["CSI"].shift(-1)
-valid_dataset["Future_CSI"] = valid_dataset["CSI"].shift(-1)
-test_dataset["Future_CSI"] = test_dataset["CSI"].shift(-1)
+train_dataset["Future_CSI"] = train_dataset["CSI"].shift(-offset)
+valid_dataset["Future_CSI"] = valid_dataset["CSI"].shift(-offset)
+test_dataset["Future_CSI"] = test_dataset["CSI"].shift(-offset)
 
-train_dataset = train_dataset.iloc[:-1]
-valid_dataset = valid_dataset.iloc[:-1]
-test_dataset = test_dataset.iloc[:-1]
+train_dataset = train_dataset.iloc[:-offset]
+valid_dataset = valid_dataset.iloc[:-offset]
+test_dataset = test_dataset.iloc[:-offset]
 
 # drop unused columns and get values out of dataframe
 # inputs: Future SZA (for masking) + current GHI
@@ -401,8 +403,9 @@ with open("results/baseline_results/persistence.txt", 'w') as file:
     file.write("R^2: " + str(test_csi_r2))
 
 # plot the results
-plt.plot(range(72), y_test_ghi[:72], label="Actual")
-plt.plot(range(72), test_preds[:72], label="Predicted")
+hours = np.arange(864) * (5/60) # 5 minutes to hours
+plt.plot(hours, y_test_ghi[:864], label="Actual")
+plt.plot(hours, test_preds[:864], label="Predicted")
 plt.title("Persistence GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")

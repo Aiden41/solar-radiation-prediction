@@ -3,6 +3,8 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.compose import ColumnTransformer
 
+offset = 12 # adjust this!
+
 all_x_train_raw = []
 all_x_valid_raw = []
 all_x_test_raw = []
@@ -13,7 +15,7 @@ masks = []
 
 for x in range(1,8):
     for y in range(1,8):
-        path = f"data/row{x}/{y}/data.csv"
+        path = f"data/5min/row{x}/{y}/data.csv" # adjust this!
 
         dataset = pd.read_csv(path)
         dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
@@ -76,33 +78,33 @@ for x in range(1,8):
         test_dataset.loc[mask, 'CSI'] = 0.0
 
         # move up deterministic columns and place into new columns
-        train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-1)
-        valid_dataset["Future_SZA"] = valid_dataset["Solar Zenith Angle"].shift(-1)
-        test_dataset["Future_SZA"] = test_dataset["Solar Zenith Angle"].shift(-1)
+        train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-offset)
+        valid_dataset["Future_SZA"] = valid_dataset["Solar Zenith Angle"].shift(-offset)
+        test_dataset["Future_SZA"] = test_dataset["Solar Zenith Angle"].shift(-offset)
 
-        train_dataset["Future_CS_GHI"] = train_dataset["Clearsky GHI"].shift(-1)
-        valid_dataset["Future_CS_GHI"] = valid_dataset["Clearsky GHI"].shift(-1)
-        test_dataset["Future_CS_GHI"] = test_dataset["Clearsky GHI"].shift(-1)
+        train_dataset["Future_CS_GHI"] = train_dataset["Clearsky GHI"].shift(-offset)
+        valid_dataset["Future_CS_GHI"] = valid_dataset["Clearsky GHI"].shift(-offset)
+        test_dataset["Future_CS_GHI"] = test_dataset["Clearsky GHI"].shift(-offset)
 
-        train_dataset["Future_CS_DNI"] = train_dataset["Clearsky DNI"].shift(-1)
-        valid_dataset["Future_CS_DNI"] = valid_dataset["Clearsky DNI"].shift(-1)
-        test_dataset["Future_CS_DNI"] = test_dataset["Clearsky DNI"].shift(-1)
+        train_dataset["Future_CS_DNI"] = train_dataset["Clearsky DNI"].shift(-offset)
+        valid_dataset["Future_CS_DNI"] = valid_dataset["Clearsky DNI"].shift(-offset)
+        test_dataset["Future_CS_DNI"] = test_dataset["Clearsky DNI"].shift(-offset)
 
-        train_dataset["Future_CS_DHI"] = train_dataset["Clearsky DHI"].shift(-1)
-        valid_dataset["Future_CS_DHI"] = valid_dataset["Clearsky DHI"].shift(-1)
-        test_dataset["Future_CS_DHI"] = test_dataset["Clearsky DHI"].shift(-1)
+        train_dataset["Future_CS_DHI"] = train_dataset["Clearsky DHI"].shift(-offset)
+        valid_dataset["Future_CS_DHI"] = valid_dataset["Clearsky DHI"].shift(-offset)
+        test_dataset["Future_CS_DHI"] = test_dataset["Clearsky DHI"].shift(-offset)
 
-        train_dataset["Future_GHI"] = train_dataset["GHI"].shift(-1)
-        valid_dataset["Future_GHI"] = valid_dataset["GHI"].shift(-1)
-        test_dataset["Future_GHI"] = test_dataset["GHI"].shift(-1)
+        train_dataset["Future_GHI"] = train_dataset["GHI"].shift(-offset)
+        valid_dataset["Future_GHI"] = valid_dataset["GHI"].shift(-offset)
+        test_dataset["Future_GHI"] = test_dataset["GHI"].shift(-offset)
 
-        train_dataset["Future_CSI"] = train_dataset["CSI"].shift(-1)
-        valid_dataset["Future_CSI"] = valid_dataset["CSI"].shift(-1)
-        test_dataset["Future_CSI"] = test_dataset["CSI"].shift(-1)
+        train_dataset["Future_CSI"] = train_dataset["CSI"].shift(-offset)
+        valid_dataset["Future_CSI"] = valid_dataset["CSI"].shift(-offset)
+        test_dataset["Future_CSI"] = test_dataset["CSI"].shift(-offset)
 
-        train_dataset = train_dataset.iloc[:-1]
-        valid_dataset = valid_dataset.iloc[:-1]
-        test_dataset = test_dataset.iloc[:-1]
+        train_dataset = train_dataset.iloc[:-offset]
+        valid_dataset = valid_dataset.iloc[:-offset]
+        test_dataset = test_dataset.iloc[:-offset]
 
         # all_columns = list(train_dataset.columns)
 
@@ -155,6 +157,13 @@ for x in range(1,8):
             y_valid_ghi = valid_dataset["Future_GHI"].to_numpy().copy()
             y_test_ghi = test_dataset["Future_GHI"].to_numpy().copy()
 
+all_columns = sorted(set().union(*[df.columns for df in all_x_train_raw]))
+
+for i in range(49):
+    all_x_train_raw[i] = all_x_train_raw[i].reindex(columns=all_columns, fill_value=0)
+    all_x_valid_raw[i] = all_x_valid_raw[i].reindex(columns=all_columns, fill_value=0)
+    all_x_test_raw[i]  = all_x_test_raw[i].reindex(columns=all_columns, fill_value=0)
+
 
 # get column titles for ColumnTransformer, excluding cyclical features
 x_columns = ['Wind Speed', 'Wind Direction', 'Precipitable Water', 'SSA', 'Relative Humidity']
@@ -169,7 +178,7 @@ x_scaler = ColumnTransformer(
     remainder='passthrough'
 )
 
-x_scaler.fit(all_x_train_raw[0])
+x_scaler.fit(pd.concat(all_x_train_raw, axis=0))
 
 scaled_x_train = []
 scaled_x_valid = []
