@@ -88,7 +88,7 @@ def build_lag_df(df, vars_to_lag):
 
 train_lags = build_lag_df(train_dataset, lag_vars)
 valid_lags = build_lag_df(valid_dataset, lag_vars)
-test_lags = build_lag_df(test_dataset,  lag_vars)
+test_lags = build_lag_df(test_dataset, lag_vars)
 
 train_dataset = pd.concat([train_dataset, train_lags], axis=1)
 valid_dataset = pd.concat([valid_dataset, valid_lags], axis=1)

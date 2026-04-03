@@ -202,7 +202,7 @@ for i in range(49):
 
 train_weights = train_mask.to_numpy().astype(np.float32)
 valid_weights = valid_mask.to_numpy().astype(np.float32)
-test_weights  = test_mask.to_numpy().astype(np.float32)
+test_weights = test_mask.to_numpy().astype(np.float32)
 
 scaled_x_train = np.stack(scaled_x_train, axis=0)
 scaled_x_valid = np.stack(scaled_x_valid, axis=0)
