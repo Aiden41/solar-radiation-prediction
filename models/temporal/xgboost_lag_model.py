@@ -7,11 +7,10 @@ from matplotlib import pyplot as plt
 from xgboost import XGBRegressor
 from sklearn.inspection import permutation_importance
 
-offset = 1 # number of hours ahead to predict
-lagged_hours = 1 # number of hours behind to append to the row
+offset = 12 # number of rows ahead to predict
 
 # read in data
-dataset = pd.read_csv('data/target/data.csv')
+dataset = pd.read_csv('data/5min/row4/4/data.csv', dtype=np.float32)
 dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
 mask = dataset['Year'] <= 2022
 train_dataset = dataset[mask].copy()
@@ -71,34 +70,62 @@ valid_dataset.loc[mask, 'CSI'] = 0.0
 mask = test_dataset['Solar Zenith Angle'] >= 90
 test_dataset.loc[mask, 'CSI'] = 0.0
 
+lag_vars = [
+    "GHI", "DNI", "DHI", "CSI",
+    "Wind Speed", "Wind Direction",
+    "Relative Humidity", "Precipitable Water"
+]
+
+lags = range(1, 7)
+
+def build_lag_df(df, vars_to_lag):
+    lagged = {}
+    for var in vars_to_lag:
+        for L in lags:
+            lagged[f"{var}_t{L}"] = df[var].shift(L)
+    return pd.DataFrame(lagged)
+
+train_lags = build_lag_df(train_dataset, lag_vars)
+valid_lags = build_lag_df(valid_dataset, lag_vars)
+test_lags = build_lag_df(test_dataset, lag_vars)
+
+train_dataset = pd.concat([train_dataset, train_lags], axis=1)
+valid_dataset = pd.concat([valid_dataset, valid_lags], axis=1)
+test_dataset = pd.concat([test_dataset, test_lags], axis=1)
+
+max_lag = max(lags)
+train_dataset = train_dataset.iloc[max_lag:].reset_index(drop=True)
+valid_dataset = valid_dataset.iloc[max_lag:].reset_index(drop=True)
+test_dataset = test_dataset.iloc[max_lag:].reset_index(drop=True)
+
 # move up deterministic columns and place into new columns
-train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-1)
-valid_dataset["Future_SZA"] = valid_dataset["Solar Zenith Angle"].shift(-1)
-test_dataset["Future_SZA"] = test_dataset["Solar Zenith Angle"].shift(-1)
+train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-offset)
+valid_dataset["Future_SZA"] = valid_dataset["Solar Zenith Angle"].shift(-offset)
+test_dataset["Future_SZA"] = test_dataset["Solar Zenith Angle"].shift(-offset)
 
-train_dataset["Future_CS_GHI"] = train_dataset["Clearsky GHI"].shift(-1)
-valid_dataset["Future_CS_GHI"] = valid_dataset["Clearsky GHI"].shift(-1)
-test_dataset["Future_CS_GHI"] = test_dataset["Clearsky GHI"].shift(-1)
+train_dataset["Future_CS_GHI"] = train_dataset["Clearsky GHI"].shift(-offset)
+valid_dataset["Future_CS_GHI"] = valid_dataset["Clearsky GHI"].shift(-offset)
+test_dataset["Future_CS_GHI"] = test_dataset["Clearsky GHI"].shift(-offset)
 
-train_dataset["Future_CS_DNI"] = train_dataset["Clearsky DNI"].shift(-1)
-valid_dataset["Future_CS_DNI"] = valid_dataset["Clearsky DNI"].shift(-1)
-test_dataset["Future_CS_DNI"] = test_dataset["Clearsky DNI"].shift(-1)
+train_dataset["Future_CS_DNI"] = train_dataset["Clearsky DNI"].shift(-offset)
+valid_dataset["Future_CS_DNI"] = valid_dataset["Clearsky DNI"].shift(-offset)
+test_dataset["Future_CS_DNI"] = test_dataset["Clearsky DNI"].shift(-offset)
 
-train_dataset["Future_CS_DHI"] = train_dataset["Clearsky DHI"].shift(-1)
-valid_dataset["Future_CS_DHI"] = valid_dataset["Clearsky DHI"].shift(-1)
-test_dataset["Future_CS_DHI"] = test_dataset["Clearsky DHI"].shift(-1)
+train_dataset["Future_CS_DHI"] = train_dataset["Clearsky DHI"].shift(-offset)
+valid_dataset["Future_CS_DHI"] = valid_dataset["Clearsky DHI"].shift(-offset)
+test_dataset["Future_CS_DHI"] = test_dataset["Clearsky DHI"].shift(-offset)
 
-train_dataset["Future_GHI"] = train_dataset["GHI"].shift(-1)
-valid_dataset["Future_GHI"] = valid_dataset["GHI"].shift(-1)
-test_dataset["Future_GHI"] = test_dataset["GHI"].shift(-1)
+train_dataset["Future_GHI"] = train_dataset["GHI"].shift(-offset)
+valid_dataset["Future_GHI"] = valid_dataset["GHI"].shift(-offset)
+test_dataset["Future_GHI"] = test_dataset["GHI"].shift(-offset)
 
-train_dataset["Future_CSI"] = train_dataset["CSI"].shift(-1)
-valid_dataset["Future_CSI"] = valid_dataset["CSI"].shift(-1)
-test_dataset["Future_CSI"] = test_dataset["CSI"].shift(-1)
+train_dataset["Future_CSI"] = train_dataset["CSI"].shift(-offset)
+valid_dataset["Future_CSI"] = valid_dataset["CSI"].shift(-offset)
+test_dataset["Future_CSI"] = test_dataset["CSI"].shift(-offset)
 
-train_dataset = train_dataset.iloc[:-1]
-valid_dataset = valid_dataset.iloc[:-1]
-test_dataset = test_dataset.iloc[:-1]
+train_dataset = train_dataset.iloc[:-offset]
+valid_dataset = valid_dataset.iloc[:-offset]
+test_dataset = test_dataset.iloc[:-offset]
 
 # all_columns = list(train_dataset.columns)
 
@@ -118,9 +145,9 @@ x_test = test_dataset.drop(columns = drop_columns)
 y_test = test_dataset[['Future_CSI']]
 y_test_ghi = test_dataset[['Future_GHI']]
 
-y_train_ghi = y_train_ghi.to_numpy().flatten()
-y_valid_ghi = y_valid_ghi.to_numpy().flatten()
-y_test_ghi = y_test_ghi.to_numpy().flatten()
+y_train_ghi = y_train_ghi.to_numpy().astype(np.float32).flatten()
+y_valid_ghi = y_valid_ghi.to_numpy().astype(np.float32).flatten()
+y_test_ghi = y_test_ghi.to_numpy().astype(np.float32).flatten()
 
 remaining_columns = list(x_train.columns)
 # print(remaining_columns)
@@ -142,116 +169,112 @@ y_columns = list(y_train)
 
 # scale all specified input columns 
 x_scaler = ColumnTransformer([("scaler", StandardScaler(), x_columns)], remainder='passthrough')
-x_train = x_scaler.fit_transform(x_train)
-x_valid = x_scaler.transform(x_valid)
-x_test = x_scaler.transform(x_test)
+x_train = x_scaler.fit_transform(x_train).astype(np.float32)
+x_valid = x_scaler.transform(x_valid).astype(np.float32)
+x_test = x_scaler.transform(x_test).astype(np.float32)
 
-y_train = y_train.to_numpy()
-y_valid = y_valid.to_numpy()
-y_test = y_test.to_numpy()
+y_train = y_train.to_numpy().astype(np.float32).flatten()
+y_valid = y_valid.to_numpy().astype(np.float32).flatten()
+y_test = y_test.to_numpy().astype(np.float32).flatten()
 
-train_weights = np.where(train_dataset['Solar Zenith Angle'] >= 90, 0.0, 1.0)
-valid_weights = np.where(valid_dataset['Solar Zenith Angle'] >= 90, 0.0, 1.0)
+train_weights = (train_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
+valid_weights = (valid_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 
-def stack_lagged_rows(X, lagged_hours):
-    T, D = X.shape
-    stacked = []
-    for t in range(lagged_hours, T):
-        window = [X[t]]
-        for lag in range(1, lagged_hours + 1):
-            window.append(X[t - lag])
-        stacked.append(np.concatenate(window))
-    return np.vstack(stacked)
-
-x_train = stack_lagged_rows(x_train, lagged_hours)
-x_valid = stack_lagged_rows(x_valid, lagged_hours)
-x_test = stack_lagged_rows(x_test, lagged_hours)
-
-future_cs_ghi_train = train_dataset['Future_CS_GHI'].to_numpy()[lagged_hours:]
-future_cs_ghi_valid = valid_dataset['Future_CS_GHI'].to_numpy()[lagged_hours:]
-future_cs_ghi_test = test_dataset['Future_CS_GHI'].to_numpy()[lagged_hours:]
-
-y_train_ghi = y_train_ghi[lagged_hours:]
-y_valid_ghi = y_valid_ghi[lagged_hours:]
-y_test_ghi = y_test_ghi[lagged_hours:]
-
-y_train = y_train[lagged_hours:]
-y_valid = y_valid[lagged_hours:]
-y_test = y_test[lagged_hours:]
-
-train_weights = train_weights[lagged_hours:]
-valid_weights = valid_weights[lagged_hours:]
-
-model = XGBRegressor(n_estimators=1000, eval_metric='rmse', early_stopping_rounds=100, eta=0.05)
+model = XGBRegressor(n_estimators=1000, eval_metric="rmse", objective="reg:pseudohubererror", early_stopping_rounds=100, eta=0.05)
 model.fit(x_train, y_train, sample_weight=train_weights, eval_set=[(x_train, y_train), (x_valid, y_valid)], sample_weight_eval_set=[train_weights, valid_weights], verbose=False)
 results = model.evals_result()
 epochs = len(results['validation_0']['rmse'])
 x_axis = range(0, epochs)
 
+# feature importance
+# booster = model.get_booster()
+
+# importance_gain = booster.get_score(importance_type='gain')
+# importance_cover = booster.get_score(importance_type='cover')
+# importance_weight = booster.get_score(importance_type='weight')
+
+# importance = pd.DataFrame({
+#     'feature': list(importance_gain.keys()),
+#     'gain': list(importance_gain.values()),
+#     'cover': [importance_cover.get(f, 0) for f in importance_gain.keys()],
+#     'weight': [importance_weight.get(f, 0) for f in importance_gain.keys()]
+# })
+
+# importance.sort_values('gain', ascending=False)
+
+# print(importance)
+
 train_pred = model.predict(x_train)
 valid_pred = model.predict(x_valid)
 test_pred = model.predict(x_test)
 
-train_mask_sza = (train_dataset['Future_SZA'].to_numpy()[lagged_hours:] >= 90)
-valid_mask_sza = (valid_dataset['Future_SZA'].to_numpy()[lagged_hours:] >= 90)
-test_mask_sza = (test_dataset['Future_SZA'].to_numpy()[lagged_hours:] >= 90)
+train_pred[train_dataset['Future_SZA'] >= 90] = 0
+valid_pred[valid_dataset['Future_SZA'] >= 90] = 0
+test_pred[test_dataset['Future_SZA'] >= 90] = 0
 
-train_pred[train_mask_sza] = 0
-valid_pred[valid_mask_sza] = 0
-test_pred[test_mask_sza] = 0
+train_pred_ghi = train_pred * train_dataset['Future_CS_GHI'].to_numpy()
+valid_pred_ghi = valid_pred * valid_dataset['Future_CS_GHI'].to_numpy() 
+test_pred_ghi = test_pred * test_dataset['Future_CS_GHI'].to_numpy()
 
-train_pred_ghi = train_pred * future_cs_ghi_train
-valid_pred_ghi = valid_pred * future_cs_ghi_valid
-test_pred_ghi = test_pred * future_cs_ghi_valid
+train_mask = train_dataset['Future_SZA'] < 90
+valid_mask = valid_dataset['Future_SZA'] < 90
+test_mask = test_dataset['Future_SZA'] < 90
+
+train_true = y_train_ghi[train_mask]
+valid_true = y_valid_ghi[valid_mask]
+test_true = y_test_ghi[test_mask]
+
+train_pred_day = train_pred_ghi[train_mask]
+valid_pred_day = valid_pred_ghi[valid_mask]
+test_pred_day = test_pred_ghi[test_mask]
 
 # MSE
-train_mse = mean_squared_error(y_train_ghi, train_pred_ghi)
-valid_mse = mean_squared_error(y_valid_ghi, valid_pred_ghi)
-test_mse = mean_squared_error(y_test_ghi, test_pred_ghi)
+train_mse = mean_squared_error(train_true, train_pred_day)
+valid_mse = mean_squared_error(valid_true, valid_pred_day)
+test_mse = mean_squared_error(test_true, test_pred_day)
 
 # RMSE
 train_rmse = np.sqrt(train_mse)
 valid_rmse = np.sqrt(valid_mse)
 test_rmse = np.sqrt(test_mse)
 
-# NRMSE
+# NRMSE (normalize by daytime mean GHI)
 train_nrmse = train_rmse / train_average_GHI
 valid_nrmse = valid_rmse / valid_average_GHI
 test_nrmse = test_rmse / test_average_GHI
 
 # MAE
-train_mae = mean_absolute_error(y_train_ghi, train_pred_ghi)
-valid_mae = mean_absolute_error(y_valid_ghi, valid_pred_ghi)
-test_mae = mean_absolute_error(y_test_ghi, test_pred_ghi)
+train_mae = mean_absolute_error(train_true, train_pred_day)
+valid_mae = mean_absolute_error(valid_true, valid_pred_day)
+test_mae = mean_absolute_error(test_true, test_pred_day)
 
 # MBE
-def mbe(y_true, y_pred): 
+def mbe(y_true, y_pred):
     return np.mean(y_pred - y_true)
 
-train_mbe = mbe(y_train_ghi, train_pred_ghi)
-valid_mbe = mbe(y_valid_ghi, valid_pred_ghi)
-test_mbe = mbe(y_test_ghi, test_pred_ghi)
+train_mbe = mbe(train_true, train_pred_day)
+valid_mbe = mbe(valid_true, valid_pred_day)
+test_mbe = mbe(test_true, test_pred_day)
 
 # sMAPE
 def smape(y_true, y_pred):
     y_true = np.asarray(y_true).flatten()
     y_pred = np.asarray(y_pred).flatten()
-
     den = (np.abs(y_true) + np.abs(y_pred)) / 2.0
     mask = den > 1e-6
-
     return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
 
-train_smape = smape(y_train, train_pred)
-valid_smape = smape(y_valid, valid_pred)
-test_smape = smape(y_test, test_pred)
+train_smape = smape(train_true, train_pred_day)
+valid_smape = smape(valid_true, valid_pred_day)
+test_smape = smape(test_true, test_pred_day)
 
 # R^2
-train_r2 = r2_score(y_train_ghi, train_pred_ghi)
-valid_r2 = r2_score(y_valid_ghi, valid_pred_ghi)
-test_r2 = r2_score(y_test_ghi, test_pred_ghi)
+train_r2 = r2_score(train_true, train_pred_day)
+valid_r2 = r2_score(valid_true, valid_pred_day)
+test_r2 = r2_score(test_true, test_pred_day)
 
 # print results
+print("GHI-SPACE METRICS")
 print("Training Error")
 print("MSE:", train_mse)
 print("RMSE:", train_rmse)
@@ -268,7 +291,7 @@ print("NRMSE:", valid_nrmse)
 print("MAE:", valid_mae)
 print("MBE:", valid_mbe)
 print("sMAPE:", valid_smape)
-print("R^2:", test_r2)
+print("R^2:", valid_r2)
 
 print("\nTesting Error")
 print("MSE:", test_mse)
@@ -279,13 +302,53 @@ print("MBE:", test_mbe)
 print("sMAPE:", test_smape)
 print("R^2:", test_r2)
 
+train_true_csi = y_train[train_mask].flatten()
+valid_true_csi = y_valid[valid_mask].flatten()
+test_true_csi = y_test[test_mask].flatten()
+
+train_pred_csi = train_pred[train_mask]
+valid_pred_csi = valid_pred[valid_mask]
+test_pred_csi = test_pred[test_mask]
+
+# CSI MAE
+train_csi_mae = mean_absolute_error(train_true_csi, train_pred_csi)
+valid_csi_mae = mean_absolute_error(valid_true_csi, valid_pred_csi)
+test_csi_mae = mean_absolute_error(test_true_csi, test_pred_csi)
+
+# CSI sMAPE
+train_csi_smape = smape(train_true_csi, train_pred_csi)
+valid_csi_smape = smape(valid_true_csi, valid_pred_csi)
+test_csi_smape = smape(test_true_csi, test_pred_csi)
+
+# CSI R^2
+train_csi_r2 = r2_score(train_true_csi, train_pred_csi)
+valid_csi_r2 = r2_score(valid_true_csi, valid_pred_csi)
+test_csi_r2 = r2_score(test_true_csi, test_pred_csi)
+
+print("\nCSI-SPACE METRICS")
+print("Training Error")
+print("MAE: ", train_csi_mae)
+print("sMAPE: ", train_csi_smape)
+print("R^2:", train_csi_r2)
+
+print("\nValidation Error")
+print("MAE: ", valid_csi_mae)
+print("sMAPE: ", valid_csi_smape)
+print("R^2: ", valid_csi_r2)
+
+print("\nTesting Error")
+print("MAE: ", test_csi_mae)
+print("sMAPE: ", test_csi_smape)
+print("R^2: ", test_csi_r2)
+
 # save results
-with open(f"results/other/lagged_xgboost/lagged_xgboost_{lagged_hours}.txt", 'w') as file:
+with open("results/temporal_results/xgboost_lag.txt", 'w') as file:
+    file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
     file.write("NRMSE: " + str(train_nrmse) + "\n")
-    file.write("MAE: " +str(train_mae) + "\n")
+    file.write("MAE: " + str(train_mae) + "\n")
     file.write("MBE: " + str(train_mbe) + "\n")
     file.write("sMAPE: " + str(train_smape) + "\n")
     file.write("R^2: " + str(train_r2) + "\n")
@@ -294,7 +357,7 @@ with open(f"results/other/lagged_xgboost/lagged_xgboost_{lagged_hours}.txt", 'w'
     file.write("MSE: " + str(valid_mse) + "\n")
     file.write("RMSE: " + str(valid_rmse) + "\n")
     file.write("NRMSE: " + str(valid_nrmse) + "\n")
-    file.write("MAE: " +str(valid_mae) + "\n")
+    file.write("MAE: " + str(valid_mae) + "\n")
     file.write("MBE: " + str(valid_mbe) + "\n")
     file.write("sMAPE: " + str(valid_smape) + "\n")
     file.write("R^2: " + str(valid_r2) + "\n")
@@ -303,17 +366,34 @@ with open(f"results/other/lagged_xgboost/lagged_xgboost_{lagged_hours}.txt", 'w'
     file.write("MSE: " + str(test_mse) + "\n")
     file.write("RMSE: " + str(test_rmse) + "\n")
     file.write("NRMSE: " + str(test_nrmse) + "\n")
-    file.write("MAE: " +str(test_mae) + "\n")
+    file.write("MAE: " + str(test_mae) + "\n")
     file.write("MBE: " + str(test_mbe) + "\n")
     file.write("sMAPE: " + str(test_smape) + "\n")
-    file.write("R^2: " + str(test_r2))
+    file.write("R^2: " + str(test_r2) + "\n")
+
+    file.write("\nCSI-SPACE METRICS\n")
+    file.write("Training Error\n")
+    file.write("MAE: " + str(train_csi_mae) + "\n")
+    file.write("sMAPE: " + str(train_csi_smape) + "\n")
+    file.write("R^2: " + str(train_csi_r2) + "\n")
+
+    file.write("\nValidation Error\n")
+    file.write("MAE: " + str(valid_csi_mae) + "\n")
+    file.write("sMAPE: " + str(valid_csi_smape) + "\n")
+    file.write("R^2: " + str(valid_csi_r2) + "\n")
+
+    file.write("\nTesting Error\n")
+    file.write("MAE: " + str(test_csi_mae) + "\n")
+    file.write("sMAPE: " + str(test_csi_smape) + "\n")
+    file.write("R^2: " + str(test_csi_r2))
 
 # plot the results
-plt.plot(range(72), y_test_ghi[:72], label="Actual")
-plt.plot(range(72), test_pred_ghi[:72], label="Predicted")
+hours = np.arange(864) * (5/60) # 5 minutes to hours
+plt.plot(hours, y_test_ghi[:864], label="Actual")
+plt.plot(hours, test_pred_ghi[:864], label="Predicted")
 plt.title("XGBoost GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig(f"results/other/lagged_xgboost/lagged_xgboost_{lagged_hours}.pdf")
+plt.savefig("results/temporal_results/xgboost_lag.pdf")
 plt.show(block=False)

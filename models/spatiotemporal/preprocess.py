@@ -9,15 +9,11 @@ all_x_train_raw = []
 all_x_valid_raw = []
 all_x_test_raw = []
 
-all_y = []
-averages = []
-masks = []
-
 for x in range(1,8):
     for y in range(1,8):
         path = f"data/5min/row{x}/{y}/data.csv" # adjust this!
 
-        dataset = pd.read_csv(path)
+        dataset = pd.read_csv(path, dtype=np.float32)
         dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
         mask = dataset['Year'] <= 2022
         train_dataset = dataset[mask].copy()
@@ -118,6 +114,10 @@ for x in range(1,8):
         remaining_columns = list(x_train.columns)
         # print(remaining_columns)
 
+        x_train = x_train.astype(np.float32)
+        x_valid = x_valid.astype(np.float32)
+        x_test = x_test.astype(np.float32)
+
         all_x_train_raw.append(x_train.copy())
         all_x_valid_raw.append(x_valid.copy())
         all_x_test_raw.append(x_test.copy())
@@ -134,17 +134,9 @@ for x in range(1,8):
             test_average = np.mean(test_dataset['CSI'][test_mask])
             test_average_GHI = np.mean(test_dataset['GHI'][test_mask])
 
-            masks = [train_mask.copy(), valid_mask.copy(), test_mask.copy()]
-
             y_train = train_dataset[["Future_CSI"]].to_numpy().copy()
             y_valid = valid_dataset[["Future_CSI"]].to_numpy().copy()
             y_test = test_dataset[["Future_CSI"]].to_numpy().copy()
-            all_y.append(y_train.copy())
-            all_y.append(y_valid.copy())
-            all_y.append(y_test.copy())
-            averages.append(train_average_GHI.copy())
-            averages.append(valid_average_GHI.copy())
-            averages.append(test_average_GHI.copy())
             future_sza_train = train_dataset["Future_SZA"].to_numpy().copy()
             future_sza_valid = valid_dataset["Future_SZA"].to_numpy().copy()
             future_sza_test = test_dataset["Future_SZA"].to_numpy().copy()
@@ -157,13 +149,28 @@ for x in range(1,8):
             y_valid_ghi = valid_dataset["Future_GHI"].to_numpy().copy()
             y_test_ghi = test_dataset["Future_GHI"].to_numpy().copy()
 
+            y_train = y_train.astype(np.float32)
+            y_valid = y_valid.astype(np.float32)
+            y_test = y_test.astype(np.float32)
+
+            y_train_ghi = y_train_ghi.astype(np.float32)
+            y_valid_ghi = y_valid_ghi.astype(np.float32)
+            y_test_ghi = y_test_ghi.astype(np.float32)
+
+            future_sza_train = future_sza_train.astype(np.float32)
+            future_sza_valid = future_sza_valid.astype(np.float32)
+            future_sza_test = future_sza_test.astype(np.float32)
+
+            future_cs_ghi_train = future_cs_ghi_train.astype(np.float32)
+            future_cs_ghi_valid = future_cs_ghi_valid.astype(np.float32)
+            future_cs_ghi_test = future_cs_ghi_test.astype(np.float32)
+
 all_columns = sorted(set().union(*[df.columns for df in all_x_train_raw]))
 
 for i in range(49):
     all_x_train_raw[i] = all_x_train_raw[i].reindex(columns=all_columns, fill_value=0)
     all_x_valid_raw[i] = all_x_valid_raw[i].reindex(columns=all_columns, fill_value=0)
-    all_x_test_raw[i]  = all_x_test_raw[i].reindex(columns=all_columns, fill_value=0)
-
+    all_x_test_raw[i] = all_x_test_raw[i].reindex(columns=all_columns, fill_value=0)
 
 # get column titles for ColumnTransformer, excluding cyclical features
 x_columns = ['Wind Speed', 'Wind Direction', 'Precipitable Water', 'SSA', 'Relative Humidity']
@@ -185,25 +192,25 @@ scaled_x_valid = []
 scaled_x_test = []
 
 for i in range(49):
-    Xtr = x_scaler.transform(all_x_train_raw[i])
-    Xva = x_scaler.transform(all_x_valid_raw[i])
-    Xte = x_scaler.transform(all_x_test_raw[i])
+    Xtr = x_scaler.transform(all_x_train_raw[i]).astype(np.float32)
+    Xva = x_scaler.transform(all_x_valid_raw[i]).astype(np.float32)
+    Xte = x_scaler.transform(all_x_test_raw[i]).astype(np.float32)
 
     scaled_x_train.append(Xtr)
     scaled_x_valid.append(Xva)
     scaled_x_test.append(Xte)
 
-y_train = all_y[0]
-y_valid = all_y[1]
-y_test = all_y[2]
-
-train_weights = np.where(masks[0], 1.0, 0.0)
-valid_weights = np.where(masks[1], 1.0, 0.0)
-test_weights = np.where(masks[2], 1.0, 0.0)
+train_weights = train_mask.to_numpy().astype(np.float32)
+valid_weights = valid_mask.to_numpy().astype(np.float32)
+test_weights  = test_mask.to_numpy().astype(np.float32)
 
 scaled_x_train = np.stack(scaled_x_train, axis=0)
 scaled_x_valid = np.stack(scaled_x_valid, axis=0)
 scaled_x_test = np.stack(scaled_x_test, axis=0)
+
+scaled_x_train = scaled_x_train.astype(np.float32)
+scaled_x_valid = scaled_x_valid.astype(np.float32)
+scaled_x_test = scaled_x_test.astype(np.float32)
 
 np.save("saves/preprocessed/x_train.npy", scaled_x_train)
 np.save("saves/preprocessed/x_valid.npy", scaled_x_valid)
@@ -217,7 +224,7 @@ np.save("saves/preprocessed/train_weights.npy", train_weights)
 np.save("saves/preprocessed/valid_weights.npy", valid_weights)
 np.save("saves/preprocessed/test_weights.npy", test_weights)
 
-np.save("saves/preprocessed/averages.npy", np.array(averages))
+np.save("saves/preprocessed/averages.npy", np.array([train_average_GHI, valid_average_GHI, test_average_GHI], dtype=np.float32))
 
 np.save("saves/preprocessed/future_sza_train.npy", future_sza_train)
 np.save("saves/preprocessed/future_sza_valid.npy", future_sza_valid)

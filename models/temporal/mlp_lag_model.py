@@ -4,8 +4,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from matplotlib import pyplot as plt
-from xgboost import XGBRegressor
-from sklearn.inspection import permutation_importance
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
 
 offset = 12 # number of rows ahead to predict
 
@@ -69,6 +70,42 @@ mask = valid_dataset['Solar Zenith Angle'] >= 90
 valid_dataset.loc[mask, 'CSI'] = 0.0
 mask = test_dataset['Solar Zenith Angle'] >= 90
 test_dataset.loc[mask, 'CSI'] = 0.0
+
+lag_vars = [
+    "GHI", "DNI", "DHI", "CSI",
+    "Wind Speed", "Wind Direction",
+    "Relative Humidity", "Precipitable Water"
+]
+
+lags = range(1, 7)
+
+def build_lag_df(df, vars_to_lag):
+    lagged = {}
+    for var in vars_to_lag:
+        for L in lags:
+            lagged[f"{var}_t{L}"] = df[var].shift(L)
+    return pd.DataFrame(lagged)
+
+train_lags = build_lag_df(train_dataset, lag_vars)
+valid_lags = build_lag_df(valid_dataset, lag_vars)
+test_lags = build_lag_df(test_dataset,  lag_vars)
+
+train_dataset = pd.concat([train_dataset, train_lags], axis=1)
+valid_dataset = pd.concat([valid_dataset, valid_lags], axis=1)
+test_dataset = pd.concat([test_dataset, test_lags], axis=1)
+
+max_lag = max(lags)
+train_dataset = train_dataset.iloc[max_lag:].reset_index(drop=True)
+valid_dataset = valid_dataset.iloc[max_lag:].reset_index(drop=True)
+test_dataset = test_dataset.iloc[max_lag:].reset_index(drop=True)
+
+# Rolling 30-minute statistics (6 × 5min)
+roll_window = 6
+
+for df in [train_dataset, valid_dataset, test_dataset]:
+    df["CSI_roll_mean_30m"] = df["CSI"].rolling(roll_window).mean()
+    df["CSI_roll_std_30m"] = df["CSI"].rolling(roll_window).std()
+    df["CSI_roll_slope_30m"] = df["CSI"] - df["CSI"].shift(roll_window)
 
 # move up deterministic columns and place into new columns
 train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-offset)
@@ -135,6 +172,10 @@ valid_average_GHI = np.mean(valid_dataset['GHI'][valid_mask])
 test_average = np.mean(test_dataset['CSI'][test_mask])
 test_average_GHI = np.mean(test_dataset['GHI'][test_mask])
 
+train_dataset = train_dataset.astype(np.float32)
+valid_dataset = valid_dataset.astype(np.float32)
+test_dataset = test_dataset.astype(np.float32)
+
 # get column titles for ColumnTransformer, excluding cyclical features
 x_columns = ['Wind Speed', 'Wind Direction', 'Precipitable Water', 'SSA', 'Relative Humidity']
 y_columns = list(y_train)
@@ -152,33 +193,88 @@ y_test = y_test.to_numpy().astype(np.float32).flatten()
 train_weights = (train_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 valid_weights = (valid_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 
-model = XGBRegressor(n_estimators=1000, eval_metric="rmse", objective="reg:pseudohubererror", early_stopping_rounds=100, eta=0.05)
-model.fit(x_train, y_train, sample_weight=train_weights, eval_set=[(x_train, y_train), (x_valid, y_valid)], sample_weight_eval_set=[train_weights, valid_weights], verbose=False)
-results = model.evals_result()
-epochs = len(results['validation_0']['rmse'])
-x_axis = range(0, epochs)
+class MLP(nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, 256),
+            nn.LayerNorm(256),
+            nn.SiLU(),
+            nn.Dropout(0.1),
 
-# feature importance
-# booster = model.get_booster()
+            nn.Linear(256, 128),
+            nn.LayerNorm(128),
+            nn.SiLU(),
+            nn.Dropout(0.1),
 
-# importance_gain = booster.get_score(importance_type='gain')
-# importance_cover = booster.get_score(importance_type='cover')
-# importance_weight = booster.get_score(importance_type='weight')
+            nn.Linear(128, 64),
+            nn.LayerNorm(64),
+            nn.SiLU(),
+            nn.Dropout(0.1),
 
-# importance = pd.DataFrame({
-#     'feature': list(importance_gain.keys()),
-#     'gain': list(importance_gain.values()),
-#     'cover': [importance_cover.get(f, 0) for f in importance_gain.keys()],
-#     'weight': [importance_weight.get(f, 0) for f in importance_gain.keys()]
-# })
+            nn.Linear(64, 32),
+            nn.LayerNorm(32),
+            nn.SiLU(),
+            nn.Dropout(0.1),
 
-# importance.sort_values('gain', ascending=False)
+            nn.Linear(32, 1)
+        )
 
-# print(importance)
+    def forward(self, x):
+        return self.net(x)
 
-train_pred = model.predict(x_train)
-valid_pred = model.predict(x_valid)
-test_pred = model.predict(x_test)
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model = MLP(input_dim=x_train.shape[1]).to(device)
+
+# set other various parameters
+criterion = nn.SmoothL1Loss(beta=0.1)
+learning_rate = 0.0015
+optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+
+num_epochs = 100
+batch_size = 1024
+
+day_mask = train_dataset['Future_SZA'] < 90
+
+x_train_day = x_train[day_mask]
+y_train_day = y_train[day_mask]
+
+train_tensor = torch.tensor(x_train_day, dtype=torch.float32)
+train_targets = torch.tensor(y_train_day, dtype=torch.float32).unsqueeze(1)
+
+train_loader = DataLoader(
+    TensorDataset(train_tensor, train_targets),
+    batch_size=batch_size,
+    shuffle=True
+)
+
+for epoch in range(num_epochs):
+    model.train()
+    epoch_loss = 0.0
+
+    for xb, yb in train_loader:
+        xb = xb.to(device)
+        yb = yb.to(device)
+
+        optimizer.zero_grad()
+        preds = model(xb)
+
+        loss = criterion(preds, yb)
+
+        loss.backward()
+        optimizer.step()
+
+        epoch_loss += loss.item()
+
+    print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}")
+
+print("\n-------------------\n")
+
+model.eval()
+with torch.no_grad():
+    train_pred = model(torch.tensor(x_train, dtype=torch.float32, device=device)).cpu().numpy().flatten()
+    valid_pred = model(torch.tensor(x_valid, dtype=torch.float32, device=device)).cpu().numpy().flatten()
+    test_pred = model(torch.tensor(x_test, dtype=torch.float32, device=device)).cpu().numpy().flatten()
 
 train_pred[train_dataset['Future_SZA'] >= 90] = 0
 valid_pred[valid_dataset['Future_SZA'] >= 90] = 0
@@ -314,7 +410,7 @@ print("sMAPE: ", test_csi_smape)
 print("R^2: ", test_csi_r2)
 
 # save results
-with open("results/temporal_results/xgboost.txt", 'w') as file:
+with open("results/temporal_results/mlp_lag.txt", 'w') as file:
     file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
@@ -363,9 +459,9 @@ with open("results/temporal_results/xgboost.txt", 'w') as file:
 hours = np.arange(864) * (5/60) # 5 minutes to hours
 plt.plot(hours, y_test_ghi[:864], label="Actual")
 plt.plot(hours, test_pred_ghi[:864], label="Predicted")
-plt.title("XGBoost GHI Pred vs Actual")
+plt.title("MLP GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/temporal_results/xgboost.pdf")
+plt.savefig("results/temporal_results/mlp_lag.pdf")
 plt.show(block=False)

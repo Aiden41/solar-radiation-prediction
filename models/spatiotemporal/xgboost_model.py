@@ -1,41 +1,47 @@
 import numpy as np
-import pandas as pd
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from matplotlib import pyplot as plt
 from xgboost import XGBRegressor
 
-x_train = np.load("saves/preprocessed/x_train.npy", allow_pickle=True)
-x_valid = np.load("saves/preprocessed/x_valid.npy", allow_pickle=True)
-x_test = np.load("saves/preprocessed/x_test.npy", allow_pickle=True)
+lagged = True
+path = None
+if lagged:
+    path = "saves/lagged_preprocessed/"
+else:
+    path = "saves/preprocessed/"
+
+x_train = np.load(path + "x_train.npy", allow_pickle=True)
+x_valid = np.load(path + "x_valid.npy", allow_pickle=True)
+x_test = np.load(path + "x_test.npy", allow_pickle=True)
 
 x_train = np.concatenate(x_train, axis=1)
 x_valid = np.concatenate(x_valid, axis=1)
 x_test = np.concatenate(x_test, axis=1)
 
-y_train = np.load("saves/preprocessed/y_train.npy")
-y_valid = np.load("saves/preprocessed/y_valid.npy")
-y_test = np.load("saves/preprocessed/y_test.npy")
+y_train = np.load(path + "y_train.npy")
+y_valid = np.load(path + "y_valid.npy")
+y_test = np.load(path + "y_test.npy")
 
-train_weights = np.load("saves/preprocessed/train_weights.npy")
-valid_weights = np.load("saves/preprocessed/valid_weights.npy")
-test_weights = np.load("saves/preprocessed/test_weights.npy")
+train_weights = np.load(path + "train_weights.npy")
+valid_weights = np.load(path + "valid_weights.npy")
+test_weights = np.load(path + "test_weights.npy")
 
-avg = np.load("saves/preprocessed/averages.npy")
+avg = np.load(path + "averages.npy")
 train_average_GHI = avg[0]
 valid_average_GHI = avg[1]
 test_average_GHI = avg[2]
 
-future_sza_train = np.load("saves/preprocessed/future_sza_train.npy")
-future_sza_valid = np.load("saves/preprocessed/future_sza_valid.npy")
-future_sza_test = np.load("saves/preprocessed/future_sza_test.npy")
+future_sza_train = np.load(path + "future_sza_train.npy")
+future_sza_valid = np.load(path + "future_sza_valid.npy")
+future_sza_test = np.load(path + "future_sza_test.npy")
 
-future_cs_ghi_train = np.load("saves/preprocessed/future_cs_ghi_train.npy")
-future_cs_ghi_valid = np.load("saves/preprocessed/future_cs_ghi_valid.npy")
-future_cs_ghi_test = np.load("saves/preprocessed/future_cs_ghi_test.npy")
+future_cs_ghi_train = np.load(path+ "future_cs_ghi_train.npy")
+future_cs_ghi_valid = np.load(path + "future_cs_ghi_valid.npy")
+future_cs_ghi_test = np.load(path + "future_cs_ghi_test.npy")
 
-y_train_ghi = np.load("saves/preprocessed/y_train_ghi.npy")
-y_valid_ghi = np.load("saves/preprocessed/y_valid_ghi.npy")
-y_test_ghi = np.load("saves/preprocessed/y_test_ghi.npy")
+y_train_ghi = np.load(path + "y_train_ghi.npy")
+y_valid_ghi = np.load(path + "y_valid_ghi.npy")
+y_test_ghi = np.load(path + "y_test_ghi.npy")
 
 model = XGBRegressor(n_estimators=1000, eval_metric="rmse", objective="reg:pseudohubererror", early_stopping_rounds=100, eta=0.05)
 model.fit(x_train, y_train, sample_weight=train_weights, eval_set=[(x_train, y_train), (x_valid, y_valid)], sample_weight_eval_set=[train_weights, valid_weights], verbose=False)
@@ -182,8 +188,12 @@ print("MAE: ", test_csi_mae)
 print("sMAPE: ", test_csi_smape)
 print("R^2: ", test_csi_r2)
 
+path = "xgboost"
+if lagged:
+    path += "_lag"
+
 # save results
-with open("results/spatiotemporal_results/xgboost.txt", 'w') as file:
+with open("results/spatiotemporal_results/" + path + ".txt", 'w') as file:
     file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
@@ -236,5 +246,5 @@ plt.title("XGBoost GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/spatiotemporal_results/xgboost.pdf")
+plt.savefig("results/spatiotemporal_results/" + path + ".pdf")
 plt.show(block=False)

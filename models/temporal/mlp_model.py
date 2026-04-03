@@ -8,10 +8,10 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-offset = 12 # number of hours ahead to predict
+offset = 12 # number of rows ahead to predict
 
 # read in data
-dataset = pd.read_csv('data/5min/row4/4/data.csv')
+dataset = pd.read_csv('data/5min/row4/4/data.csv', dtype=np.float32)
 dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
 mask = dataset['Year'] <= 2022
 train_dataset = dataset[mask].copy()
@@ -118,9 +118,9 @@ x_test = test_dataset.drop(columns = drop_columns)
 y_test = test_dataset[['Future_CSI']]
 y_test_ghi = test_dataset[['Future_GHI']]
 
-y_train_ghi = y_train_ghi.to_numpy().flatten()
-y_valid_ghi = y_valid_ghi.to_numpy().flatten()
-y_test_ghi = y_test_ghi.to_numpy().flatten()
+y_train_ghi = y_train_ghi.to_numpy().astype(np.float32).flatten()
+y_valid_ghi = y_valid_ghi.to_numpy().astype(np.float32).flatten()
+y_test_ghi = y_test_ghi.to_numpy().astype(np.float32).flatten()
 
 remaining_columns = list(x_train.columns)
 # print(remaining_columns)
@@ -142,16 +142,16 @@ y_columns = list(y_train)
 
 # scale all specified input columns 
 x_scaler = ColumnTransformer([("scaler", StandardScaler(), x_columns)], remainder='passthrough')
-x_train = x_scaler.fit_transform(x_train)
-x_valid = x_scaler.transform(x_valid)
-x_test = x_scaler.transform(x_test)
+x_train = x_scaler.fit_transform(x_train).astype(np.float32)
+x_valid = x_scaler.transform(x_valid).astype(np.float32)
+x_test = x_scaler.transform(x_test).astype(np.float32)
 
-y_train = y_train.to_numpy()
-y_valid = y_valid.to_numpy()
-y_test = y_test.to_numpy()
+y_train = y_train.to_numpy().astype(np.float32).flatten()
+y_valid = y_valid.to_numpy().astype(np.float32).flatten()
+y_test = y_test.to_numpy().astype(np.float32).flatten()
 
-train_weights = np.where(train_dataset['Solar Zenith Angle'] >= 90, 0.0, 1.0)
-valid_weights = np.where(valid_dataset['Solar Zenith Angle'] >= 90, 0.0, 1.0)
+train_weights = (train_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
+valid_weights = (valid_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 
 class MLP(nn.Module):
     def __init__(self, input_dim):
@@ -200,7 +200,7 @@ x_train_day = x_train[day_mask]
 y_train_day = y_train[day_mask]
 
 train_tensor = torch.tensor(x_train_day, dtype=torch.float32)
-train_targets = torch.tensor(y_train_day, dtype=torch.float32)
+train_targets = torch.tensor(y_train_day, dtype=torch.float32).unsqueeze(1)
 
 train_loader = DataLoader(
     TensorDataset(train_tensor, train_targets),
