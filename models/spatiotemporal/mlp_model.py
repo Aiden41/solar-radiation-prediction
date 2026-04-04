@@ -118,8 +118,9 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
 
-        epoch_loss += loss.item()
+        epoch_loss += loss.item() * xb.size(0)
 
+    epoch_loss /= len(train_tensor)
     print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}")
 
 print("\n-------------------\n")
