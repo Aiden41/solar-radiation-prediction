@@ -208,13 +208,20 @@ scaled_x_train = np.stack(scaled_x_train, axis=0)
 scaled_x_valid = np.stack(scaled_x_valid, axis=0)
 scaled_x_test = np.stack(scaled_x_test, axis=0)
 
-scaled_x_train = scaled_x_train.astype(np.float32)
-scaled_x_valid = scaled_x_valid.astype(np.float32)
-scaled_x_test = scaled_x_test.astype(np.float32)
+def to_grid(arr):
+    # arr: [49, T, F]
+    H = W = 7
+    arr = arr.reshape(H, W, arr.shape[1], arr.shape[2])   # [7,7,T,F]
+    arr = arr.transpose(2, 3, 0, 1)                       # [T, F, 7, 7]
+    return arr
 
-np.save("saves/preprocessed/x_train.npy", scaled_x_train)
-np.save("saves/preprocessed/x_valid.npy", scaled_x_valid)
-np.save("saves/preprocessed/x_test.npy", scaled_x_test)
+train_grid = to_grid(scaled_x_train)
+valid_grid = to_grid(scaled_x_valid)
+test_grid = to_grid(scaled_x_test)
+
+np.save("saves/preprocessed/train_grid.npy", train_grid)
+np.save("saves/preprocessed/valid_grid.npy", valid_grid)
+np.save("saves/preprocessed/test_grid.npy", test_grid)
 
 np.save("saves/preprocessed/y_train.npy", y_train)
 np.save("saves/preprocessed/y_valid.npy", y_valid)

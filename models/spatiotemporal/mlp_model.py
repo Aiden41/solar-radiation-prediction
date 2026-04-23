@@ -3,22 +3,23 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from matplotlib import pyplot as plt
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
+from solar_dataset import SpatioTemporalDataset
 
 lagged = True
-path = None
+num_epochs = 10
+batch_size = 1024
+
+seq_len = None
+path = "saves/preprocessed/"
 if lagged:
-    path = "saves/lagged_preprocessed/"
+    seq_len = 12
 else:
-    path = "saves/preprocessed/"
+    seq_len = 1
 
-x_train = np.load(path + "x_train.npy", allow_pickle=True)
-x_valid = np.load(path + "x_valid.npy", allow_pickle=True)
-x_test = np.load(path + "x_test.npy", allow_pickle=True)
-
-x_train = np.concatenate(x_train, axis=1)
-x_valid = np.concatenate(x_valid, axis=1)
-x_test = np.concatenate(x_test, axis=1)
+x_train = np.load(path + "train_grid.npy")
+x_valid = np.load(path + "valid_grid.npy")
+x_test = np.load(path + "test_grid.npy")
 
 y_train = np.load(path + "y_train.npy")
 y_valid = np.load(path + "y_valid.npy")
@@ -75,32 +76,20 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+train_ds = SpatioTemporalDataset(x_train, y_train, future_sza_train, seq_len=seq_len, flatten=True)
+valid_ds = SpatioTemporalDataset(x_valid, y_valid, future_sza_valid, seq_len=seq_len, flatten=True)
+test_ds = SpatioTemporalDataset(x_test, y_test, future_sza_test, seq_len=seq_len, flatten=True)
+
+train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = MLP(input_dim=x_train.shape[1]).to(device)
+sample_x, _ = train_ds[0]
+model = MLP(input_dim=sample_x.numel()).to(device)
 
 # set other various parameters
 criterion = nn.SmoothL1Loss(beta=0.1)
 learning_rate = 0.0015
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
-
-num_epochs = 100
-batch_size = 1024
-
-train_mask = future_sza_train < 90
-valid_mask = future_sza_valid < 90
-test_mask = future_sza_test < 90
-
-x_train_day = x_train[train_mask]
-y_train_day = y_train[train_mask]
-
-train_tensor = torch.tensor(x_train_day, dtype=torch.float32)
-train_targets = torch.tensor(y_train_day, dtype=torch.float32)
-
-train_loader = DataLoader(
-    TensorDataset(train_tensor, train_targets),
-    batch_size=batch_size,
-    shuffle=True
-)
 
 for epoch in range(num_epochs):
     model.train()
@@ -120,32 +109,50 @@ for epoch in range(num_epochs):
 
         epoch_loss += loss.item() * xb.size(0)
 
-    epoch_loss /= len(train_tensor)
+    epoch_loss /= len(train_ds)
     print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}")
 
 print("\n-------------------\n")
 
-model.eval()
-with torch.no_grad():
-    train_pred = model(torch.tensor(x_train, dtype=torch.float32, device=device)).cpu().numpy().flatten()
-    valid_pred = model(torch.tensor(x_valid, dtype=torch.float32, device=device)).cpu().numpy().flatten()
-    test_pred = model(torch.tensor(x_test, dtype=torch.float32, device=device)).cpu().numpy().flatten()
+train_loader = DataLoader(train_ds, batch_size=batch_size)
+valid_loader = DataLoader(valid_ds, batch_size=batch_size)
+test_loader = DataLoader(test_ds, batch_size=batch_size)
 
-train_pred[future_sza_train >= 90] = 0
-valid_pred[future_sza_valid >= 90] = 0
-test_pred[future_sza_test >= 90] = 0
+def predict(model, loader):
+    preds = []
+    with torch.no_grad():
+        for xb, _ in loader:
+            xb = xb.to(device)
+            preds.append(model(xb).cpu().numpy())
+    return np.concatenate(preds, axis=0).reshape(-1)
 
-train_pred_ghi = train_pred * future_cs_ghi_train
-valid_pred_ghi = valid_pred * future_cs_ghi_valid
-test_pred_ghi = test_pred * future_cs_ghi_test
+train_pred = predict(model, train_loader)
+valid_pred = predict(model, valid_loader)
+test_pred = predict(model, test_loader)
 
-train_true = y_train_ghi[train_mask]
-valid_true = y_valid_ghi[valid_mask]
-test_true = y_test_ghi[test_mask]
+train_idx = train_ds.valid
+valid_idx = valid_ds.valid
+test_idx = test_ds.valid
 
-train_pred_day = train_pred_ghi[train_mask]
-valid_pred_day = valid_pred_ghi[valid_mask]
-test_pred_day = test_pred_ghi[test_mask]
+train_pred[future_sza_train[train_idx] >= 90] = 0
+valid_pred[future_sza_valid[valid_idx] >= 90] = 0
+test_pred[future_sza_test[test_idx] >= 90] = 0
+
+train_pred_ghi = train_pred * future_cs_ghi_train[train_idx]
+valid_pred_ghi = valid_pred * future_cs_ghi_valid[valid_idx]
+test_pred_ghi = test_pred * future_cs_ghi_test[test_idx]
+
+train_day = future_sza_train[train_idx] < 90
+valid_day = future_sza_valid[valid_idx] < 90
+test_day = future_sza_test[test_idx] < 90
+
+train_true = y_train_ghi[train_idx][train_day]
+valid_true = y_valid_ghi[valid_idx][valid_day]
+test_true = y_test_ghi[test_idx][test_day]
+
+train_pred_day = train_pred_ghi[train_day]
+valid_pred_day = valid_pred_ghi[valid_day]
+test_pred_day = test_pred_ghi[test_day]
 
 # MSE
 train_mse = mean_squared_error(train_true, train_pred_day)
@@ -221,13 +228,13 @@ print("MBE:", test_mbe)
 print("sMAPE:", test_smape)
 print("R^2:", test_r2)
 
-train_true_csi = y_train[train_mask].flatten()
-valid_true_csi = y_valid[valid_mask].flatten()
-test_true_csi = y_test[test_mask].flatten()
+train_true_csi = y_train[train_idx][train_day].flatten()
+valid_true_csi = y_valid[valid_idx][valid_day].flatten()
+test_true_csi = y_test[test_idx][test_day].flatten()
 
-train_pred_csi = train_pred[train_mask]
-valid_pred_csi = valid_pred[valid_mask]
-test_pred_csi = test_pred[test_mask]
+train_pred_csi = train_pred[train_day]
+valid_pred_csi = valid_pred[valid_day]
+test_pred_csi = test_pred[test_day]
 
 # CSI MAE
 train_csi_mae = mean_absolute_error(train_true_csi, train_pred_csi)

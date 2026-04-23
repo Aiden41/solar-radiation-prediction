@@ -3,20 +3,16 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from matplotlib import pyplot as plt
 from xgboost import XGBRegressor
 
-lagged = True
-path = None
-if lagged:
-    path = "saves/lagged_preprocessed/"
-else:
-    path = "saves/preprocessed/"
+lagged = False
+path = "saves/preprocessed/"
 
-x_train = np.load(path + "x_train.npy", allow_pickle=True)
-x_valid = np.load(path + "x_valid.npy", allow_pickle=True)
-x_test = np.load(path + "x_test.npy", allow_pickle=True)
+x_train = np.load(path + "train_grid.npy")
+x_valid = np.load(path + "valid_grid.npy")
+x_test = np.load(path + "test_grid.npy")
 
-x_train = np.concatenate(x_train, axis=1)
-x_valid = np.concatenate(x_valid, axis=1)
-x_test = np.concatenate(x_test, axis=1)
+x_train = x_train.reshape(x_train.shape[0], -1)
+x_valid = x_valid.reshape(x_valid.shape[0], -1)
+x_test  = x_test.reshape(x_test.shape[0], -1)
 
 y_train = np.load(path + "y_train.npy")
 y_valid = np.load(path + "y_valid.npy")

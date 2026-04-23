@@ -4,3 +4,4 @@ data/1hr
 data/5min
 saves/*
 data/target
+__pycache__
