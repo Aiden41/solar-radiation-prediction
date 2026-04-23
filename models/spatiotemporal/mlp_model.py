@@ -51,26 +51,17 @@ class MLP(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(input_dim, 2048),
-            nn.LayerNorm(2048),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(0.1),
 
             nn.Linear(2048, 1024),
-            nn.LayerNorm(1024),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(0.1),
 
             nn.Linear(1024, 512),
-            nn.LayerNorm(512),
-            nn.SiLU(),
-            nn.Dropout(0.1),
+            nn.ReLU(),
 
-            nn.Linear(512, 256),
-            nn.LayerNorm(256),
-            nn.SiLU(),
-            nn.Dropout(0.1),
-
-            nn.Linear(256, 1)
+            nn.Linear(512, 1)
         )
 
     def forward(self, x):

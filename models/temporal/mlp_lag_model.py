@@ -99,14 +99,6 @@ train_dataset = train_dataset.iloc[max_lag:].reset_index(drop=True)
 valid_dataset = valid_dataset.iloc[max_lag:].reset_index(drop=True)
 test_dataset = test_dataset.iloc[max_lag:].reset_index(drop=True)
 
-# Rolling 30-minute statistics (6 × 5min)
-roll_window = 6
-
-for df in [train_dataset, valid_dataset, test_dataset]:
-    df["CSI_roll_mean_30m"] = df["CSI"].rolling(roll_window).mean()
-    df["CSI_roll_std_30m"] = df["CSI"].rolling(roll_window).std()
-    df["CSI_roll_slope_30m"] = df["CSI"] - df["CSI"].shift(roll_window)
-
 # move up deterministic columns and place into new columns
 train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-offset)
 valid_dataset["Future_SZA"] = valid_dataset["Solar Zenith Angle"].shift(-offset)
@@ -198,26 +190,17 @@ class MLP(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(input_dim, 256),
-            nn.LayerNorm(256),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(0.1),
 
             nn.Linear(256, 128),
-            nn.LayerNorm(128),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(0.1),
 
             nn.Linear(128, 64),
-            nn.LayerNorm(64),
-            nn.SiLU(),
-            nn.Dropout(0.1),
+            nn.ReLU(),
 
-            nn.Linear(64, 32),
-            nn.LayerNorm(32),
-            nn.SiLU(),
-            nn.Dropout(0.1),
-
-            nn.Linear(32, 1)
+            nn.Linear(64, 1)
         )
 
     def forward(self, x):
@@ -231,16 +214,11 @@ criterion = nn.SmoothL1Loss(beta=0.1)
 learning_rate = 0.0015
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 
-num_epochs = 100
+num_epochs = 40
 batch_size = 1024
 
-day_mask = train_dataset['Future_SZA'] < 90
-
-x_train_day = x_train[day_mask]
-y_train_day = y_train[day_mask]
-
-train_tensor = torch.tensor(x_train_day, dtype=torch.float32)
-train_targets = torch.tensor(y_train_day, dtype=torch.float32).unsqueeze(1)
+train_tensor = torch.tensor(x_train, dtype=torch.float32)
+train_targets = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
 
 train_loader = DataLoader(
     TensorDataset(train_tensor, train_targets),

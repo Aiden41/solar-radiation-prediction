@@ -12,7 +12,7 @@ x_test = np.load(path + "test_grid.npy")
 
 x_train = x_train.reshape(x_train.shape[0], -1)
 x_valid = x_valid.reshape(x_valid.shape[0], -1)
-x_test  = x_test.reshape(x_test.shape[0], -1)
+x_test = x_test.reshape(x_test.shape[0], -1)
 
 y_train = np.load(path + "y_train.npy")
 y_valid = np.load(path + "y_valid.npy")
