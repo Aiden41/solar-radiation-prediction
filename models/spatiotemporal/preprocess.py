@@ -209,10 +209,9 @@ scaled_x_valid = np.stack(scaled_x_valid, axis=0)
 scaled_x_test = np.stack(scaled_x_test, axis=0)
 
 def to_grid(arr):
-    # arr: [49, T, F]
     H = W = 7
-    arr = arr.reshape(H, W, arr.shape[1], arr.shape[2])   # [7,7,T,F]
-    arr = arr.transpose(2, 3, 0, 1)                       # [T, F, 7, 7]
+    arr = arr.reshape(H, W, arr.shape[1], arr.shape[2])
+    arr = arr.transpose(2, 3, 0, 1)
     return arr
 
 train_grid = to_grid(scaled_x_train)

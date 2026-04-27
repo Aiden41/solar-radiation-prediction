@@ -8,6 +8,12 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
+num_epochs = 100
+batch_size = 1024
+
+early_stopping = True
+patience = 8
+
 offset = 12 # number of rows ahead to predict
 
 # read in data
@@ -179,14 +185,11 @@ model = MLP(input_dim=x_train.shape[1]).to(device)
 
 # set other various parameters
 criterion = nn.SmoothL1Loss(beta=0.1)
-learning_rate = 0.0015
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=3e-4)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-5)
 
-num_epochs = 40
-batch_size = 1024
-
-train_tensor = torch.tensor(x_train, dtype=torch.float32)
-train_targets = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
+train_tensor = torch.tensor(x_train, dtype=torch.float32, device=device)
+train_targets = torch.tensor(y_train, dtype=torch.float32, device=device).unsqueeze(1)
 
 train_loader = DataLoader(
     TensorDataset(train_tensor, train_targets),
@@ -194,33 +197,74 @@ train_loader = DataLoader(
     shuffle=True
 )
 
-for epoch in range(num_epochs):
+valid_tensor = torch.tensor(x_valid, dtype=torch.float32, device=device)
+valid_targets = torch.tensor(y_valid, dtype=torch.float32, device=device).unsqueeze(1)
+
+valid_loader = DataLoader(
+    TensorDataset(valid_tensor, valid_targets),
+    batch_size=batch_size,
+    shuffle=False
+)
+
+best_val_loss = float('inf')
+since_improvement = 0
+best_state_dict = None
+best_epoch = 0
+train_losses = []
+valid_losses = []
+
+for epoch in range(1, num_epochs+1):
     model.train()
-    epoch_loss = 0.0
+    train_epoch_loss = 0.0
 
     for xb, yb in train_loader:
-        xb = xb.to(device)
-        yb = yb.to(device)
-
         optimizer.zero_grad()
         preds = model(xb)
-
         loss = criterion(preds, yb)
-
         loss.backward()
         optimizer.step()
+        train_epoch_loss += loss.item() * xb.size(0)
 
-        epoch_loss += loss.item() * xb.size(0)
+    train_epoch_loss /= len(train_tensor)
+    train_losses.append(train_epoch_loss)
 
-    epoch_loss /= len(train_tensor)
-    print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}")
+    model.eval()
+    valid_epoch_loss = 0.0
+
+    with torch.no_grad():
+        for xb, yb in valid_loader:
+            preds = model(xb)
+            loss = criterion(preds, yb)
+            valid_epoch_loss += loss.item() * xb.size(0)
+
+    valid_epoch_loss /= len(valid_tensor)
+    valid_losses.append(valid_epoch_loss)
+
+    print(f"Epoch {epoch}/{num_epochs}, Train Loss: {train_epoch_loss:.4f}, Valid Loss: {valid_epoch_loss:.4f}")
+
+    if early_stopping:
+        if valid_epoch_loss < best_val_loss:
+            best_val_loss = valid_epoch_loss
+            since_improvement = 0
+            best_state_dict = model.state_dict()
+            best_epoch = epoch
+        else:
+            since_improvement += 1
+            if since_improvement >= patience:
+                print(f"\nEarly stopping triggered at epoch {epoch}, restoring model from epoch {best_epoch}")
+                break
+    
+    scheduler.step()
+
+if best_state_dict is not None:
+    model.load_state_dict(best_state_dict)
 
 print("\n-------------------\n")
 
 model.eval()
 with torch.no_grad():
-    train_pred = model(torch.tensor(x_train, dtype=torch.float32, device=device)).cpu().numpy().flatten()
-    valid_pred = model(torch.tensor(x_valid, dtype=torch.float32, device=device)).cpu().numpy().flatten()
+    train_pred = model(train_tensor).cpu().numpy().flatten()
+    valid_pred = model(valid_tensor).cpu().numpy().flatten()
     test_pred = model(torch.tensor(x_test, dtype=torch.float32, device=device)).cpu().numpy().flatten()
 
 train_pred[train_dataset['Future_SZA'] >= 90] = 0

@@ -1,4 +1,3 @@
-import torch
 from torch.utils.data import Dataset
 import numpy as np
 
@@ -22,6 +21,6 @@ class SpatioTemporalDataset(Dataset):
         target = self.targets[t]
 
         if self.flatten:
-            seq = seq.flatten()
+            seq = seq.reshape(-1)
 
-        return torch.tensor(seq, dtype=torch.float32), torch.tensor(target, dtype=torch.float32)
+        return seq, target
