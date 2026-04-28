@@ -189,7 +189,7 @@ if lagged:
     path += "_lag"
 
 # save results
-with open("results/spatiotemporal_results/" + path + ".txt", 'w') as file:
+with open("results/grid_results/" + path + ".txt", 'w') as file:
     file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
@@ -242,5 +242,5 @@ plt.title("XGBoost GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/spatiotemporal_results/" + path + ".pdf")
+plt.savefig("results/grid_results/" + path + ".pdf")
 plt.show(block=False)

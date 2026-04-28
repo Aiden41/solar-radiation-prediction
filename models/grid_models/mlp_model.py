@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from solar_dataset import SpatioTemporalDataset
+from solar_dataset import SolarDataset
 
 def main():
     lagged = False
@@ -67,9 +67,9 @@ def main():
         def forward(self, x):
             return self.net(x)
 
-    train_ds = SpatioTemporalDataset(x_train, y_train, future_sza_train, seq_len, flatten=True)
-    valid_ds = SpatioTemporalDataset(x_valid, y_valid, future_sza_valid, seq_len, flatten=True)
-    test_ds = SpatioTemporalDataset(x_test, y_test, future_sza_test, seq_len, flatten=True)
+    train_ds = SolarDataset(x_train, y_train, future_sza_train, seq_len, flatten=True)
+    valid_ds = SolarDataset(x_valid, y_valid, future_sza_valid, seq_len, flatten=True)
+    test_ds = SolarDataset(x_test, y_test, future_sza_test, seq_len, flatten=True)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=3, persistent_workers=True)
     valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=3, persistent_workers=True)
@@ -157,6 +157,7 @@ def main():
                 preds.append(model(xb).cpu().numpy())
         return np.concatenate(preds, axis=0).reshape(-1)
 
+    model.eval()
     train_pred = predict(model, train_loader)
     valid_pred = predict(model, valid_loader)
     test_pred = predict(model, test_loader)
@@ -305,7 +306,7 @@ def main():
         path = "mlp"
 
     # save results
-    with open("results/spatiotemporal_results/" + path + ".txt", 'w') as file:
+    with open("results/grid_results/" + path + ".txt", 'w') as file:
         file.write("GHI-SPACE METRICS\n")
         file.write("Training Error\n")
         file.write("MSE: " + str(train_mse) + "\n")
@@ -358,7 +359,7 @@ def main():
     plt.legend()
     plt.ylabel("GHI")
     plt.xlabel("Hour")
-    plt.savefig("results/spatiotemporal_results/" + path + ".pdf")
+    plt.savefig("results/grid_results/" + path + ".pdf")
     plt.show(block=False)
 
 if __name__ == "__main__":

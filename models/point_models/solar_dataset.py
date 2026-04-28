@@ -1,7 +1,8 @@
 from torch.utils.data import Dataset
 import numpy as np
+import torch
 
-class SpatioTemporalDataset(Dataset):
+class SolarDataset(Dataset):
     def __init__(self, data, targets, future_sza, seq_len, flatten=False):
         self.data = data
         self.targets = targets
@@ -23,4 +24,5 @@ class SpatioTemporalDataset(Dataset):
         if self.flatten:
             seq = seq.reshape(-1)
 
-        return seq, target
+        return seq, target.unsqueeze(0)
+

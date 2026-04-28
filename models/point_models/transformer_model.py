@@ -6,10 +6,12 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from matplotlib import pyplot as plt
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
+from solar_dataset import SolarDataset
 
 num_epochs = 100
 batch_size = 1024
+seq_len = 12
 
 early_stopping = True
 patience = 8
@@ -159,52 +161,85 @@ y_test = y_test.to_numpy().astype(np.float32).flatten()
 train_weights = (train_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 valid_weights = (valid_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 
-class MLP(nn.Module):
-    def __init__(self, input_dim):
+class Transformer(nn.Module):
+    def __init__(self, input_dim, d_model=128, nhead=4, num_layers=2, dim_feedforward=256, dropout=0.1):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, 256),
-            nn.ReLU(),
-            nn.Dropout(0.1),
 
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Dropout(0.1),
+        self.input_projection = nn.Linear(input_dim, d_model)
+        self.pos_embedding = nn.Parameter(torch.randn(1, seq_len, d_model))
 
-            nn.Linear(128, 64),
-            nn.ReLU(),
-
-            nn.Linear(64, 1)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True
         )
 
+        self.transformer = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=num_layers
+        )
+
+        self.fc = nn.Linear(d_model, 1)
+
     def forward(self, x):
-        return self.net(x)
+        x = self.input_projection(x)
+        x = x + self.pos_embedding
+        out = self.transformer(x)
+        out = out[:, -1, :]
+        return self.fc(out)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = MLP(input_dim=x_train.shape[1]).to(device)
+model = Transformer(
+    input_dim=x_train.shape[1],
+    d_model=128,
+    nhead=4,
+    num_layers=2,
+    dim_feedforward=256,
+    dropout=0.1
+).to(device)
 
 # set other various parameters
 criterion = nn.SmoothL1Loss(beta=0.1)
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=3e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-5)
 
-train_tensor = torch.tensor(x_train, dtype=torch.float32, device=device)
-train_targets = torch.tensor(y_train, dtype=torch.float32, device=device).unsqueeze(1)
+seq_len = 12  # or whatever you want
 
-train_loader = DataLoader(
-    TensorDataset(train_tensor, train_targets),
-    batch_size=batch_size,
-    shuffle=True
+x_train_tensor = torch.tensor(x_train, dtype=torch.float32, device=device)
+y_train_tensor = torch.tensor(y_train, dtype=torch.float32, device=device)
+x_valid_tensor = torch.tensor(x_valid, dtype=torch.float32, device=device)
+y_valid_tensor = torch.tensor(y_valid, dtype=torch.float32, device=device)
+x_test_tensor = torch.tensor(x_test, dtype=torch.float32, device=device)
+y_test_tensor = torch.tensor(y_test, dtype=torch.float32, device=device)
+
+train_ds = SolarDataset(
+    data=x_train_tensor,
+    targets=y_train_tensor,
+    future_sza=train_dataset['Future_SZA'].to_numpy(),
+    seq_len=seq_len,
+    flatten=False
 )
 
-valid_tensor = torch.tensor(x_valid, dtype=torch.float32, device=device)
-valid_targets = torch.tensor(y_valid, dtype=torch.float32, device=device).unsqueeze(1)
-
-valid_loader = DataLoader(
-    TensorDataset(valid_tensor, valid_targets),
-    batch_size=batch_size,
-    shuffle=False
+valid_ds = SolarDataset(
+    data=x_valid_tensor,
+    targets=y_valid_tensor,
+    future_sza=valid_dataset['Future_SZA'].to_numpy(),
+    seq_len=seq_len,
+    flatten=False
 )
+
+test_ds = SolarDataset(
+    data=x_test_tensor,
+    targets=y_test_tensor,
+    future_sza=test_dataset['Future_SZA'].to_numpy(),
+    seq_len=seq_len,
+    flatten=False
+)
+
+train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
 
 best_val_loss = float('inf')
 since_improvement = 0
@@ -225,7 +260,7 @@ for epoch in range(1, num_epochs+1):
         optimizer.step()
         train_epoch_loss += loss.item() * xb.size(0)
 
-    train_epoch_loss /= len(train_tensor)
+    train_epoch_loss /= len(train_ds)
     train_losses.append(train_epoch_loss)
 
     model.eval()
@@ -237,7 +272,7 @@ for epoch in range(1, num_epochs+1):
             loss = criterion(preds, yb)
             valid_epoch_loss += loss.item() * xb.size(0)
 
-    valid_epoch_loss /= len(valid_tensor)
+    valid_epoch_loss /= len(valid_ds)
     valid_losses.append(valid_epoch_loss)
 
     print(f"Epoch {epoch}/{num_epochs}, Train Loss: {train_epoch_loss:.4f}, Valid Loss: {valid_epoch_loss:.4f}")
@@ -261,27 +296,42 @@ if best_state_dict is not None:
 
 print("\n-------------------\n")
 
+train_loader = DataLoader(train_ds, batch_size=batch_size)
+valid_loader = DataLoader(valid_ds, batch_size=batch_size)
+test_loader = DataLoader(test_ds, batch_size=batch_size)
+
+def predict(model, loader):
+    preds = []
+    with torch.no_grad():
+        for xb, _ in loader:
+            xb = xb.to(device)
+            preds.append(model(xb).cpu().numpy())
+    return np.concatenate(preds, axis=0).reshape(-1)
+
 model.eval()
-with torch.no_grad():
-    train_pred = model(train_tensor).cpu().numpy().flatten()
-    valid_pred = model(valid_tensor).cpu().numpy().flatten()
-    test_pred = model(torch.tensor(x_test, dtype=torch.float32, device=device)).cpu().numpy().flatten()
+train_pred = predict(model, train_loader)
+valid_pred = predict(model, valid_loader)
+test_pred = predict(model, test_loader)
 
-train_pred[train_dataset['Future_SZA'] >= 90] = 0
-valid_pred[valid_dataset['Future_SZA'] >= 90] = 0
-test_pred[test_dataset['Future_SZA'] >= 90] = 0
+train_idx = train_ds.valid
+valid_idx = valid_ds.valid
+test_idx = test_ds.valid
 
-train_pred_ghi = train_pred * train_dataset['Future_CS_GHI'].to_numpy()
-valid_pred_ghi = valid_pred * valid_dataset['Future_CS_GHI'].to_numpy() 
-test_pred_ghi = test_pred * test_dataset['Future_CS_GHI'].to_numpy()
+train_pred[train_dataset['Future_SZA'][train_idx] >= 90] = 0
+valid_pred[valid_dataset['Future_SZA'][valid_idx] >= 90] = 0
+test_pred[test_dataset['Future_SZA'][test_idx] >= 90] = 0
 
-train_mask = train_dataset['Future_SZA'] < 90
-valid_mask = valid_dataset['Future_SZA'] < 90
-test_mask = test_dataset['Future_SZA'] < 90
+train_pred_ghi = train_pred * train_dataset['Future_CS_GHI'].to_numpy()[train_idx]
+valid_pred_ghi = valid_pred * valid_dataset['Future_CS_GHI'].to_numpy()[valid_idx]
+test_pred_ghi = test_pred * test_dataset['Future_CS_GHI'].to_numpy()[test_idx]
 
-train_true = y_train_ghi[train_mask]
-valid_true = y_valid_ghi[valid_mask]
-test_true = y_test_ghi[test_mask]
+train_mask = train_dataset['Future_SZA'][train_idx] < 90
+valid_mask = valid_dataset['Future_SZA'][valid_idx] < 90
+test_mask = test_dataset['Future_SZA'][test_idx] < 90
+
+train_true = y_train_ghi[train_idx][train_mask]
+valid_true = y_valid_ghi[valid_idx][valid_mask]
+test_true = y_test_ghi[test_idx][test_mask]
 
 train_pred_day = train_pred_ghi[train_mask]
 valid_pred_day = valid_pred_ghi[valid_mask]
@@ -361,9 +411,9 @@ print("MBE:", test_mbe)
 print("sMAPE:", test_smape)
 print("R^2:", test_r2)
 
-train_true_csi = y_train[train_mask].flatten()
-valid_true_csi = y_valid[valid_mask].flatten()
-test_true_csi = y_test[test_mask].flatten()
+train_true_csi = y_train[train_idx][train_mask].flatten()
+valid_true_csi = y_valid[valid_idx][valid_mask].flatten()
+test_true_csi = y_test[test_idx][test_mask].flatten()
 
 train_pred_csi = train_pred[train_mask]
 valid_pred_csi = valid_pred[valid_mask]
@@ -401,7 +451,7 @@ print("sMAPE: ", test_csi_smape)
 print("R^2: ", test_csi_r2)
 
 # save results
-with open("results/temporal_results/mlp.txt", 'w') as file:
+with open("results/point_results/transformer.txt", 'w') as file:
     file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
@@ -454,5 +504,5 @@ plt.title("MLP GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/temporal_results/mlp.pdf")
+plt.savefig("results/point_results/transformer.pdf")
 plt.show(block=False)

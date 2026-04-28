@@ -4,8 +4,15 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from matplotlib import pyplot as plt
-from xgboost import XGBRegressor
-from sklearn.inspection import permutation_importance
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
+
+num_epochs = 100
+batch_size = 1024
+
+early_stopping = True
+patience = 8
 
 offset = 12 # number of rows ahead to predict
 
@@ -69,6 +76,34 @@ mask = valid_dataset['Solar Zenith Angle'] >= 90
 valid_dataset.loc[mask, 'CSI'] = 0.0
 mask = test_dataset['Solar Zenith Angle'] >= 90
 test_dataset.loc[mask, 'CSI'] = 0.0
+
+lag_vars = [
+    "GHI", "DNI", "DHI", "CSI",
+    "Wind Speed", "Wind Direction",
+    "Relative Humidity", "Precipitable Water"
+]
+
+lags = range(1, 7)
+
+def build_lag_df(df, vars_to_lag):
+    lagged = {}
+    for var in vars_to_lag:
+        for L in lags:
+            lagged[f"{var}_t{L}"] = df[var].shift(L)
+    return pd.DataFrame(lagged)
+
+train_lags = build_lag_df(train_dataset, lag_vars)
+valid_lags = build_lag_df(valid_dataset, lag_vars)
+test_lags = build_lag_df(test_dataset, lag_vars)
+
+train_dataset = pd.concat([train_dataset, train_lags], axis=1)
+valid_dataset = pd.concat([valid_dataset, valid_lags], axis=1)
+test_dataset = pd.concat([test_dataset, test_lags], axis=1)
+
+max_lag = max(lags)
+train_dataset = train_dataset.iloc[max_lag:].reset_index(drop=True)
+valid_dataset = valid_dataset.iloc[max_lag:].reset_index(drop=True)
+test_dataset = test_dataset.iloc[max_lag:].reset_index(drop=True)
 
 # move up deterministic columns and place into new columns
 train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-offset)
@@ -135,6 +170,10 @@ valid_average_GHI = np.mean(valid_dataset['GHI'][valid_mask])
 test_average = np.mean(test_dataset['CSI'][test_mask])
 test_average_GHI = np.mean(test_dataset['GHI'][test_mask])
 
+train_dataset = train_dataset.astype(np.float32)
+valid_dataset = valid_dataset.astype(np.float32)
+test_dataset = test_dataset.astype(np.float32)
+
 # get column titles for ColumnTransformer, excluding cyclical features
 x_columns = ['Wind Speed', 'Wind Direction', 'Precipitable Water', 'SSA', 'Relative Humidity']
 y_columns = list(y_train)
@@ -152,33 +191,113 @@ y_test = y_test.to_numpy().astype(np.float32).flatten()
 train_weights = (train_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 valid_weights = (valid_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 
-model = XGBRegressor(n_estimators=1000, eval_metric="rmse", objective="reg:pseudohubererror", early_stopping_rounds=100, eta=0.05)
-model.fit(x_train, y_train, sample_weight=train_weights, eval_set=[(x_train, y_train), (x_valid, y_valid)], sample_weight_eval_set=[train_weights, valid_weights], verbose=False)
-results = model.evals_result()
-epochs = len(results['validation_0']['rmse'])
-x_axis = range(0, epochs)
+class MLP(nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, 256),
+            nn.ReLU(),
+            nn.Dropout(0.1),
 
-# feature importance
-# booster = model.get_booster()
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.1),
 
-# importance_gain = booster.get_score(importance_type='gain')
-# importance_cover = booster.get_score(importance_type='cover')
-# importance_weight = booster.get_score(importance_type='weight')
+            nn.Linear(128, 64),
+            nn.ReLU(),
 
-# importance = pd.DataFrame({
-#     'feature': list(importance_gain.keys()),
-#     'gain': list(importance_gain.values()),
-#     'cover': [importance_cover.get(f, 0) for f in importance_gain.keys()],
-#     'weight': [importance_weight.get(f, 0) for f in importance_gain.keys()]
-# })
+            nn.Linear(64, 1)
+        )
 
-# importance.sort_values('gain', ascending=False)
+    def forward(self, x):
+        return self.net(x)
 
-# print(importance)
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model = MLP(input_dim=x_train.shape[1]).to(device)
 
-train_pred = model.predict(x_train)
-valid_pred = model.predict(x_valid)
-test_pred = model.predict(x_test)
+# set other various parameters
+criterion = nn.SmoothL1Loss(beta=0.1)
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=3e-4)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-5)
+
+train_tensor = torch.tensor(x_train, dtype=torch.float32, device=device)
+train_targets = torch.tensor(y_train, dtype=torch.float32, device=device).unsqueeze(1)
+
+train_loader = DataLoader(
+    TensorDataset(train_tensor, train_targets),
+    batch_size=batch_size,
+    shuffle=True
+)
+
+valid_tensor = torch.tensor(x_valid, dtype=torch.float32, device=device)
+valid_targets = torch.tensor(y_valid, dtype=torch.float32, device=device).unsqueeze(1)
+
+valid_loader = DataLoader(
+    TensorDataset(valid_tensor, valid_targets),
+    batch_size=batch_size,
+    shuffle=False
+)
+
+best_val_loss = float('inf')
+since_improvement = 0
+best_state_dict = None
+best_epoch = 0
+train_losses = []
+valid_losses = []
+
+for epoch in range(1, num_epochs+1):
+    model.train()
+    train_epoch_loss = 0.0
+
+    for xb, yb in train_loader:
+        optimizer.zero_grad()
+        preds = model(xb)
+        loss = criterion(preds, yb)
+        loss.backward()
+        optimizer.step()
+        train_epoch_loss += loss.item() * xb.size(0)
+
+    train_epoch_loss /= len(train_tensor)
+    train_losses.append(train_epoch_loss)
+
+    model.eval()
+    valid_epoch_loss = 0.0
+
+    with torch.no_grad():
+        for xb, yb in valid_loader:
+            preds = model(xb)
+            loss = criterion(preds, yb)
+            valid_epoch_loss += loss.item() * xb.size(0)
+
+    valid_epoch_loss /= len(valid_tensor)
+    valid_losses.append(valid_epoch_loss)
+    
+    print(f"Epoch {epoch}/{num_epochs}, Train Loss: {train_epoch_loss:.4f}, Valid Loss: {valid_epoch_loss:.4f}")
+
+    if early_stopping:
+        if valid_epoch_loss < best_val_loss:
+            best_val_loss = valid_epoch_loss
+            since_improvement = 0
+            best_state_dict = model.state_dict()
+            best_epoch = epoch
+        else:
+            since_improvement += 1
+            if since_improvement >= patience:
+                print(f"\nEarly stopping triggered at epoch {epoch}, restoring model from epoch {best_epoch}")
+                break
+    
+    scheduler.step()
+
+if best_state_dict is not None:
+    model.load_state_dict(best_state_dict)
+
+print("\n-------------------\n")
+
+model.eval()
+with torch.no_grad():
+    train_pred = model(train_tensor).cpu().numpy().flatten()
+    valid_pred = model(valid_tensor).cpu().numpy().flatten()
+    test_pred = model(torch.tensor(x_test, dtype=torch.float32, device=device)).cpu().numpy().flatten()
 
 train_pred[train_dataset['Future_SZA'] >= 90] = 0
 valid_pred[valid_dataset['Future_SZA'] >= 90] = 0
@@ -314,7 +433,7 @@ print("sMAPE: ", test_csi_smape)
 print("R^2: ", test_csi_r2)
 
 # save results
-with open("results/temporal_results/xgboost.txt", 'w') as file:
+with open("results/point_results/mlp_lag.txt", 'w') as file:
     file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
@@ -363,9 +482,9 @@ with open("results/temporal_results/xgboost.txt", 'w') as file:
 hours = np.arange(864) * (5/60) # 5 minutes to hours
 plt.plot(hours, y_test_ghi[:864], label="Actual")
 plt.plot(hours, test_pred_ghi[:864], label="Predicted")
-plt.title("XGBoost GHI Pred vs Actual")
+plt.title("MLP GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/temporal_results/xgboost.pdf")
+plt.savefig("results/point_results/mlp_lag.pdf")
 plt.show(block=False)
