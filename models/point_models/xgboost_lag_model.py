@@ -76,7 +76,7 @@ lag_vars = [
     "Relative Humidity", "Precipitable Water"
 ]
 
-lags = range(1, 7)
+lags = range(1, 12)
 
 def build_lag_df(df, vars_to_lag):
     lagged = {}
@@ -391,7 +391,7 @@ with open("results/point_results/xgboost_lag.txt", 'w') as file:
 hours = np.arange(864) * (5/60) # 5 minutes to hours
 plt.plot(hours, y_test_ghi[:864], label="Actual")
 plt.plot(hours, test_pred_ghi[:864], label="Predicted")
-plt.title("XGBoost GHI Pred vs Actual")
+plt.title(f"XGBoost ({max(lags)+1} Rows) GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")

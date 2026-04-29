@@ -3,7 +3,6 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from matplotlib import pyplot as plt
 from xgboost import XGBRegressor
 
-lagged = False
 path = "saves/preprocessed/"
 
 x_train = np.load(path + "train_grid.npy")
@@ -185,8 +184,6 @@ print("sMAPE: ", test_csi_smape)
 print("R^2: ", test_csi_r2)
 
 path = "xgboost"
-if lagged:
-    path += "_lag"
 
 # save results
 with open("results/grid_results/" + path + ".txt", 'w') as file:

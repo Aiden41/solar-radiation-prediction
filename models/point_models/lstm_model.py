@@ -185,8 +185,6 @@ criterion = nn.SmoothL1Loss(beta=0.1)
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=3e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-5)
 
-seq_len = 12  # or whatever you want
-
 x_train_tensor = torch.tensor(x_train, dtype=torch.float32, device=device)
 y_train_tensor = torch.tensor(y_train, dtype=torch.float32, device=device)
 x_valid_tensor = torch.tensor(x_valid, dtype=torch.float32, device=device)
@@ -480,7 +478,7 @@ with open("results/point_results/lstm.txt", 'w') as file:
 hours = np.arange(864) * (5/60) # 5 minutes to hours
 plt.plot(hours, y_test_ghi[:864], label="Actual")
 plt.plot(hours, test_pred_ghi[:864], label="Predicted")
-plt.title("MLP GHI Pred vs Actual")
+plt.title(f"LSTM ({seq_len} Rows) GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
