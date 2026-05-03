@@ -1,16 +1,13 @@
 from torch.utils.data import Dataset
-import numpy as np
+import torch
 
 class SolarDataset(Dataset):
-    def __init__(self, data, targets, future_sza, seq_len, flatten=False):
-        self.data = data
-        self.targets = targets
-        self.future_sza = future_sza
+    def __init__(self, data, targets, seq_len, device='cpu', flatten=False):
+        self.data = torch.tensor(data, dtype=torch.float32, device=device)
+        self.targets = torch.tensor(targets, dtype=torch.float32, device=device)
         self.seq_len = seq_len
         self.flatten = flatten
-
-        valid = np.arange(len(targets))
-        self.valid = valid[valid >= seq_len - 1]
+        self.valid = torch.arange(seq_len - 1, len(targets)).cpu().numpy()
 
     def __len__(self):
         return len(self.valid)
@@ -21,6 +18,6 @@ class SolarDataset(Dataset):
         target = self.targets[t]
 
         if self.flatten:
-            seq = seq.reshape(-1)
+            seq = seq.view(-1)
 
         return seq, target

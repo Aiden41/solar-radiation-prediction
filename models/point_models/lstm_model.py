@@ -185,36 +185,9 @@ criterion = nn.SmoothL1Loss(beta=0.1)
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=3e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-5)
 
-x_train_tensor = torch.tensor(x_train, dtype=torch.float32, device=device)
-y_train_tensor = torch.tensor(y_train, dtype=torch.float32, device=device)
-x_valid_tensor = torch.tensor(x_valid, dtype=torch.float32, device=device)
-y_valid_tensor = torch.tensor(y_valid, dtype=torch.float32, device=device)
-x_test_tensor = torch.tensor(x_test, dtype=torch.float32, device=device)
-y_test_tensor = torch.tensor(y_test, dtype=torch.float32, device=device)
-
-train_ds = SolarDataset(
-    data=x_train_tensor,
-    targets=y_train_tensor,
-    future_sza=train_dataset['Future_SZA'].to_numpy(),
-    seq_len=seq_len,
-    flatten=False
-)
-
-valid_ds = SolarDataset(
-    data=x_valid_tensor,
-    targets=y_valid_tensor,
-    future_sza=valid_dataset['Future_SZA'].to_numpy(),
-    seq_len=seq_len,
-    flatten=False
-)
-
-test_ds = SolarDataset(
-    data=x_test_tensor,
-    targets=y_test_tensor,
-    future_sza=test_dataset['Future_SZA'].to_numpy(),
-    seq_len=seq_len,
-    flatten=False
-)
+train_ds = SolarDataset(data=x_train, targets=y_train, seq_len=seq_len, device=device, flatten=False)
+valid_ds = SolarDataset(data=x_valid, targets=y_valid, seq_len=seq_len, device=device, flatten=False)
+test_ds = SolarDataset(data=x_test, targets=y_test, seq_len=seq_len, device=device, flatten=False)
 
 train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
@@ -275,7 +248,6 @@ if best_state_dict is not None:
 print("\n-------------------\n")
 
 train_loader = DataLoader(train_ds, batch_size=batch_size)
-valid_loader = DataLoader(valid_ds, batch_size=batch_size)
 test_loader = DataLoader(test_ds, batch_size=batch_size)
 
 def predict(model, loader):
