@@ -433,7 +433,7 @@ print("sMAPE: ", test_csi_smape)
 print("R^2: ", test_csi_r2)
 
 # save results
-with open("results/point_results/mlp_lag.txt", 'w') as file:
+with open(f"results/point_results/mlp_lag_{max(lags)+1}.txt", 'w') as file:
     file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
@@ -486,5 +486,5 @@ plt.title(f"MLP ({max(lags)+1} Rows) GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/point_results/mlp_lag.pdf")
+plt.savefig(f"results/point_results/mlp_lag_{max(lags)+1}.pdf")
 plt.show(block=False)

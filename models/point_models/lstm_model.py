@@ -162,13 +162,14 @@ train_weights = (train_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.
 valid_weights = (valid_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 
 class LSTM(nn.Module):
-    def __init__(self, input_dim, hidden_dim=128, num_layers=1):
+    def __init__(self, input_dim, hidden_dim=128, num_layers=1, dropout=0.0):
         super().__init__()
         self.lstm = nn.LSTM(
             input_size=input_dim,
             hidden_size=hidden_dim,
             num_layers=num_layers,
-            batch_first=True
+            batch_first=True,
+            dropout=dropout
         )
         self.fc = nn.Linear(hidden_dim, 1)
 
@@ -178,7 +179,7 @@ class LSTM(nn.Module):
         return self.fc(out)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LSTM(input_dim=x_train.shape[1]).to(device)
+model = LSTM(input_dim=x_train.shape[1], hidden_dim=256, num_layers=2, dropout=0.1).to(device)
 
 # set other various parameters
 criterion = nn.SmoothL1Loss(beta=0.1)
@@ -279,18 +280,22 @@ train_mask = train_dataset['Future_SZA'][train_idx] < 90
 valid_mask = valid_dataset['Future_SZA'][valid_idx] < 90
 test_mask = test_dataset['Future_SZA'][test_idx] < 90
 
-train_true = y_train_ghi[train_idx][train_mask]
-valid_true = y_valid_ghi[valid_idx][valid_mask]
-test_true = y_test_ghi[test_idx][test_mask]
+train_true = y_train_ghi[train_idx]
+valid_true = y_valid_ghi[valid_idx]
+test_true = y_test_ghi[test_idx]
+
+train_true_day = train_true[train_mask]
+valid_true_day = valid_true[valid_mask]
+test_true_day = test_true[test_mask]
 
 train_pred_day = train_pred_ghi[train_mask]
 valid_pred_day = valid_pred_ghi[valid_mask]
 test_pred_day = test_pred_ghi[test_mask]
 
 # MSE
-train_mse = mean_squared_error(train_true, train_pred_day)
-valid_mse = mean_squared_error(valid_true, valid_pred_day)
-test_mse = mean_squared_error(test_true, test_pred_day)
+train_mse = mean_squared_error(train_true_day, train_pred_day)
+valid_mse = mean_squared_error(valid_true_day, valid_pred_day)
+test_mse = mean_squared_error(test_true_day, test_pred_day)
 
 # RMSE
 train_rmse = np.sqrt(train_mse)
@@ -303,17 +308,17 @@ valid_nrmse = valid_rmse / valid_average_GHI
 test_nrmse = test_rmse / test_average_GHI
 
 # MAE
-train_mae = mean_absolute_error(train_true, train_pred_day)
-valid_mae = mean_absolute_error(valid_true, valid_pred_day)
-test_mae = mean_absolute_error(test_true, test_pred_day)
+train_mae = mean_absolute_error(train_true_day, train_pred_day)
+valid_mae = mean_absolute_error(valid_true_day, valid_pred_day)
+test_mae = mean_absolute_error(test_true_day, test_pred_day)
 
 # MBE
 def mbe(y_true, y_pred):
     return np.mean(y_pred - y_true)
 
-train_mbe = mbe(train_true, train_pred_day)
-valid_mbe = mbe(valid_true, valid_pred_day)
-test_mbe = mbe(test_true, test_pred_day)
+train_mbe = mbe(train_true_day, train_pred_day)
+valid_mbe = mbe(valid_true_day, valid_pred_day)
+test_mbe = mbe(test_true_day, test_pred_day)
 
 # sMAPE
 def smape(y_true, y_pred):
@@ -323,14 +328,14 @@ def smape(y_true, y_pred):
     mask = den > 1e-6
     return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
 
-train_smape = smape(train_true, train_pred_day)
-valid_smape = smape(valid_true, valid_pred_day)
-test_smape = smape(test_true, test_pred_day)
+train_smape = smape(train_true_day, train_pred_day)
+valid_smape = smape(valid_true_day, valid_pred_day)
+test_smape = smape(test_true_day, test_pred_day)
 
 # R^2
-train_r2 = r2_score(train_true, train_pred_day)
-valid_r2 = r2_score(valid_true, valid_pred_day)
-test_r2 = r2_score(test_true, test_pred_day)
+train_r2 = r2_score(train_true_day, train_pred_day)
+valid_r2 = r2_score(valid_true_day, valid_pred_day)
+test_r2 = r2_score(test_true_day, test_pred_day)
 
 # print results
 print("GHI-SPACE METRICS")
@@ -401,7 +406,7 @@ print("sMAPE: ", test_csi_smape)
 print("R^2: ", test_csi_r2)
 
 # save results
-with open("results/point_results/lstm.txt", 'w') as file:
+with open(f"results/point_results/lstm_{seq_len}.txt", 'w') as file:
     file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
@@ -448,11 +453,11 @@ with open("results/point_results/lstm.txt", 'w') as file:
 
 # plot the results
 hours = np.arange(864) * (5/60) # 5 minutes to hours
-plt.plot(hours, y_test_ghi[:864], label="Actual")
+plt.plot(hours, test_true[:864], label="Actual")
 plt.plot(hours, test_pred_ghi[:864], label="Predicted")
 plt.title(f"LSTM ({seq_len} Rows) GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/point_results/lstm.pdf")
+plt.savefig(f"results/point_results/lstm_{seq_len}.pdf")
 plt.show(block=False)

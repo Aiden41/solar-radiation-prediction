@@ -161,10 +161,9 @@ y_test = y_test.to_numpy().astype(np.float32).flatten()
 train_weights = (train_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 valid_weights = (valid_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 
-class Transformer(nn.Module):
-    def __init__(self, input_dim, d_model=128, nhead=4, num_layers=2, dim_feedforward=256, dropout=0.1):
+class TimeSeriesTransformer(nn.Module):
+    def __init__(self, input_dim, seq_len, d_model=128, nhead=4, num_layers=4, dim_feedforward=256, dropout=0.1):
         super().__init__()
-
         self.input_projection = nn.Linear(input_dim, d_model)
         self.pos_embedding = nn.Parameter(torch.randn(1, seq_len, d_model))
 
@@ -173,29 +172,41 @@ class Transformer(nn.Module):
             nhead=nhead,
             dim_feedforward=dim_feedforward,
             dropout=dropout,
-            batch_first=True
+            batch_first=True,
         )
-
-        self.transformer = nn.TransformerEncoder(
+        self.encoder = nn.TransformerEncoder(
             encoder_layer,
-            num_layers=num_layers
+            num_layers=num_layers,
         )
 
-        self.fc = nn.Linear(d_model, 1)
+        self.fc = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model, 1),
+        )
+
+    def _causal_mask(self, T, device):
+        return torch.triu(torch.ones(T, T, device=device), diagonal=1).bool()
 
     def forward(self, x):
+        B, T, _ = x.size()
         x = self.input_projection(x)
-        x = x + self.pos_embedding
-        out = self.transformer(x)
-        out = out[:, -1, :]
-        return self.fc(out)
+        x = x + self.pos_embedding[:, :T, :]
+
+        mask = self._causal_mask(T, x.device)
+        h = self.encoder(x, mask)
+
+        h_last = h[:, -1, :]
+        return self.fc(h_last)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = Transformer(
+model = TimeSeriesTransformer(
     input_dim=x_train.shape[1],
-    d_model=128,
+    seq_len=seq_len,
+    d_model=256,
     nhead=4,
-    num_layers=2,
+    num_layers=4,
     dim_feedforward=256,
     dropout=0.1
 ).to(device)
@@ -299,18 +310,22 @@ train_mask = train_dataset['Future_SZA'][train_idx] < 90
 valid_mask = valid_dataset['Future_SZA'][valid_idx] < 90
 test_mask = test_dataset['Future_SZA'][test_idx] < 90
 
-train_true = y_train_ghi[train_idx][train_mask]
-valid_true = y_valid_ghi[valid_idx][valid_mask]
-test_true = y_test_ghi[test_idx][test_mask]
+train_true = y_train_ghi[train_idx]
+valid_true = y_valid_ghi[valid_idx]
+test_true = y_test_ghi[test_idx]
+
+train_true_day = train_true[train_mask]
+valid_true_day = valid_true[valid_mask]
+test_true_day = test_true[test_mask]
 
 train_pred_day = train_pred_ghi[train_mask]
 valid_pred_day = valid_pred_ghi[valid_mask]
 test_pred_day = test_pred_ghi[test_mask]
 
 # MSE
-train_mse = mean_squared_error(train_true, train_pred_day)
-valid_mse = mean_squared_error(valid_true, valid_pred_day)
-test_mse = mean_squared_error(test_true, test_pred_day)
+train_mse = mean_squared_error(train_true_day, train_pred_day)
+valid_mse = mean_squared_error(valid_true_day, valid_pred_day)
+test_mse = mean_squared_error(test_true_day, test_pred_day)
 
 # RMSE
 train_rmse = np.sqrt(train_mse)
@@ -323,17 +338,17 @@ valid_nrmse = valid_rmse / valid_average_GHI
 test_nrmse = test_rmse / test_average_GHI
 
 # MAE
-train_mae = mean_absolute_error(train_true, train_pred_day)
-valid_mae = mean_absolute_error(valid_true, valid_pred_day)
-test_mae = mean_absolute_error(test_true, test_pred_day)
+train_mae = mean_absolute_error(train_true_day, train_pred_day)
+valid_mae = mean_absolute_error(valid_true_day, valid_pred_day)
+test_mae = mean_absolute_error(test_true_day, test_pred_day)
 
 # MBE
 def mbe(y_true, y_pred):
     return np.mean(y_pred - y_true)
 
-train_mbe = mbe(train_true, train_pred_day)
-valid_mbe = mbe(valid_true, valid_pred_day)
-test_mbe = mbe(test_true, test_pred_day)
+train_mbe = mbe(train_true_day, train_pred_day)
+valid_mbe = mbe(valid_true_day, valid_pred_day)
+test_mbe = mbe(test_true_day, test_pred_day)
 
 # sMAPE
 def smape(y_true, y_pred):
@@ -343,14 +358,14 @@ def smape(y_true, y_pred):
     mask = den > 1e-6
     return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
 
-train_smape = smape(train_true, train_pred_day)
-valid_smape = smape(valid_true, valid_pred_day)
-test_smape = smape(test_true, test_pred_day)
+train_smape = smape(train_true_day, train_pred_day)
+valid_smape = smape(valid_true_day, valid_pred_day)
+test_smape = smape(test_true_day, test_pred_day)
 
 # R^2
-train_r2 = r2_score(train_true, train_pred_day)
-valid_r2 = r2_score(valid_true, valid_pred_day)
-test_r2 = r2_score(test_true, test_pred_day)
+train_r2 = r2_score(train_true_day, train_pred_day)
+valid_r2 = r2_score(valid_true_day, valid_pred_day)
+test_r2 = r2_score(test_true_day, test_pred_day)
 
 # print results
 print("GHI-SPACE METRICS")
@@ -421,7 +436,7 @@ print("sMAPE: ", test_csi_smape)
 print("R^2: ", test_csi_r2)
 
 # save results
-with open("results/point_results/transformer.txt", 'w') as file:
+with open(f"results/point_results/transformer_{seq_len}.txt", 'w') as file:
     file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
@@ -468,11 +483,11 @@ with open("results/point_results/transformer.txt", 'w') as file:
 
 # plot the results
 hours = np.arange(864) * (5/60) # 5 minutes to hours
-plt.plot(hours, y_test_ghi[:864], label="Actual")
+plt.plot(hours, test_true[:864], label="Actual")
 plt.plot(hours, test_pred_ghi[:864], label="Predicted")
 plt.title(f"Transformer ({seq_len} Rows) GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/point_results/transformer.pdf")
+plt.savefig(f"results/point_results/transformer_{seq_len}.pdf")
 plt.show(block=False)

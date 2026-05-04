@@ -6,19 +6,14 @@ from torch import nn
 from torch.utils.data import DataLoader
 from solar_dataset import SolarDataset
 
-lagged = False
 num_epochs = 100
-batch_size = 256
+batch_size = 16
+seq_len = 12
 
 early_stopping = True
 patience = 8
 
-seq_len = None
 path = "saves/preprocessed/"
-if lagged:
-    seq_len = 12
-else:
-    seq_len = 1
 
 x_train = np.load(path + "train_grid.npy")
 x_valid = np.load(path + "valid_grid.npy")
@@ -45,37 +40,88 @@ y_train_ghi = np.load(path + "y_train_ghi.npy")
 y_valid_ghi = np.load(path + "y_valid_ghi.npy")
 y_test_ghi = np.load(path + "y_test_ghi.npy")
 
-class MLP(nn.Module):
-    def __init__(self, input_dim):
+import torch
+import torch.nn as nn
+
+class ConvLSTMCell(nn.Module):
+    def __init__(self, input_dim, hidden_dim, kernel_size):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, 2048),
-            nn.ReLU(),
-            nn.Dropout(0.1),
+        padding = kernel_size // 2
+        self.hidden_dim = hidden_dim
 
-            nn.Linear(2048, 1024),
-            nn.ReLU(),
-            nn.Dropout(0.1),
+        self.conv = nn.Conv2d(
+            in_channels=input_dim + hidden_dim,
+            out_channels=4 * hidden_dim,
+            kernel_size=kernel_size,
+            padding=padding
+        )
 
-            nn.Linear(1024, 512),
-            nn.ReLU(),
+    def forward(self, x, h, c):
+        combined = torch.cat([x, h], dim=1)
+        gates = self.conv(combined)
+        i, f, o, g = torch.chunk(gates, 4, dim=1)
 
-            nn.Linear(512, 1)
+        i = torch.sigmoid(i)
+        f = torch.sigmoid(f)
+        o = torch.sigmoid(o)
+        g = torch.tanh(g)
+
+        c_next = f * c + i * g
+        h_next = o * torch.tanh(c_next)
+        return h_next, c_next
+
+class ConvLSTM(nn.Module):
+    def __init__(self, input_dim, hidden_dims, kernel_sizes):
+        super().__init__()
+
+        assert len(hidden_dims) == len(kernel_sizes)
+
+        self.layers = nn.ModuleList()
+        self.num_layers = len(hidden_dims)
+        self.hidden_dims = hidden_dims
+        self.layers.append(
+            ConvLSTMCell(input_dim, hidden_dims[0], kernel_sizes[0])
+        )
+
+        for i in range(1, self.num_layers):
+            self.layers.append(
+                ConvLSTMCell(hidden_dims[i-1], hidden_dims[i], kernel_sizes[i])
+            )
+
+        self.head = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(hidden_dims[-1], 1)
         )
 
     def forward(self, x):
-        return self.net(x)
+        B, T, C, H, W = x.shape
+
+        hs = []
+        cs = []
+        for hdim in self.hidden_dims:
+            hs.append(torch.zeros(B, hdim, H, W, device=x.device))
+            cs.append(torch.zeros(B, hdim, H, W, device=x.device))
+
+        for t in range(T):
+            inp = x[:, t]
+            for i, layer in enumerate(self.layers):
+                hs[i], cs[i] = layer(inp, hs[i], cs[i])
+                inp = hs[i]
+
+        return self.head(hs[-1])
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-train_ds = SolarDataset(x_train, y_train, seq_len, flatten=True, device=device)
-valid_ds = SolarDataset(x_valid, y_valid, seq_len, flatten=True, device=device)
-test_ds = SolarDataset(x_test, y_test, seq_len, flatten=True, device=device)
+train_ds = SolarDataset(x_train, y_train, seq_len, flatten=False, device=device)
+valid_ds = SolarDataset(x_valid, y_valid, seq_len, flatten=False, device=device)
+test_ds = SolarDataset(x_test, y_test, seq_len, flatten=False, device=device)
 
 train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
 
-model = MLP(input_dim=len(train_ds[0][0])).to(device)
+input_dim = train_ds[0][0].shape[1]
+model = ConvLSTM(input_dim=input_dim, hidden_dims=[64,32], kernel_sizes=[3,3]).to(device)
 
 # set other various parameters
 criterion = nn.SmoothL1Loss(beta=0.1)
@@ -171,22 +217,18 @@ train_day = future_sza_train[train_idx] < 90
 valid_day = future_sza_valid[valid_idx] < 90
 test_day = future_sza_test[test_idx] < 90
 
-train_true = y_train_ghi[train_idx]
-valid_true = y_valid_ghi[valid_idx]
-test_true = y_test_ghi[test_idx]
-
-train_true_day = train_true[train_day]
-valid_true_day = valid_true[valid_day]
-test_true_day = test_true[test_day]
+train_true = y_train_ghi[train_idx][train_day]
+valid_true = y_valid_ghi[valid_idx][valid_day]
+test_true = y_test_ghi[test_idx][test_day]
 
 train_pred_day = train_pred_ghi[train_day]
 valid_pred_day = valid_pred_ghi[valid_day]
 test_pred_day = test_pred_ghi[test_day]
 
 # MSE
-train_mse = mean_squared_error(train_true_day, train_pred_day)
-valid_mse = mean_squared_error(valid_true_day, valid_pred_day)
-test_mse = mean_squared_error(test_true_day, test_pred_day)
+train_mse = mean_squared_error(train_true, train_pred_day)
+valid_mse = mean_squared_error(valid_true, valid_pred_day)
+test_mse = mean_squared_error(test_true, test_pred_day)
 
 # RMSE
 train_rmse = np.sqrt(train_mse)
@@ -199,17 +241,17 @@ valid_nrmse = valid_rmse / valid_average_GHI
 test_nrmse = test_rmse / test_average_GHI
 
 # MAE
-train_mae = mean_absolute_error(train_true_day, train_pred_day)
-valid_mae = mean_absolute_error(valid_true_day, valid_pred_day)
-test_mae = mean_absolute_error(test_true_day, test_pred_day)
+train_mae = mean_absolute_error(train_true, train_pred_day)
+valid_mae = mean_absolute_error(valid_true, valid_pred_day)
+test_mae = mean_absolute_error(test_true, test_pred_day)
 
 # MBE
 def mbe(y_true, y_pred):
     return np.mean(y_pred - y_true)
 
-train_mbe = mbe(train_true_day, train_pred_day)
-valid_mbe = mbe(valid_true_day, valid_pred_day)
-test_mbe = mbe(test_true_day, test_pred_day)
+train_mbe = mbe(train_true, train_pred_day)
+valid_mbe = mbe(valid_true, valid_pred_day)
+test_mbe = mbe(test_true, test_pred_day)
 
 # sMAPE
 def smape(y_true, y_pred):
@@ -219,14 +261,14 @@ def smape(y_true, y_pred):
     mask = den > 1e-6
     return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
 
-train_smape = smape(train_true_day, train_pred_day)
-valid_smape = smape(valid_true_day, valid_pred_day)
-test_smape = smape(test_true_day, test_pred_day)
+train_smape = smape(train_true, train_pred_day)
+valid_smape = smape(valid_true, valid_pred_day)
+test_smape = smape(test_true, test_pred_day)
 
 # R^2
-train_r2 = r2_score(train_true_day, train_pred_day)
-valid_r2 = r2_score(valid_true_day, valid_pred_day)
-test_r2 = r2_score(test_true_day, test_pred_day)
+train_r2 = r2_score(train_true, train_pred_day)
+valid_r2 = r2_score(valid_true, valid_pred_day)
+test_r2 = r2_score(test_true, test_pred_day)
 
 # print results
 print("GHI-SPACE METRICS")
@@ -296,11 +338,7 @@ print("MAE: ", test_csi_mae)
 print("sMAPE: ", test_csi_smape)
 print("R^2: ", test_csi_r2)
 
-path = None
-if lagged:
-    path = f"mlp_lag_{seq_len}"
-else:
-    path = "mlp"
+path = f"convlstm_{seq_len}"
 
 # save results
 with open("results/grid_results/" + path + ".txt", 'w') as file:
@@ -350,12 +388,9 @@ with open("results/grid_results/" + path + ".txt", 'w') as file:
 
 # plot the results
 hours = np.arange(864) * (5/60) # 5 minutes to hours
-plt.plot(hours, test_true[:864], label="Actual")
+plt.plot(hours, y_test_ghi[:864], label="Actual")
 plt.plot(hours, test_pred_ghi[:864], label="Predicted")
-if lagged:
-    plt.title(f"MLP ({seq_len} Rows) GHI Pred vs Actual")
-else:
-    plt.title("MLP GHI Pred vs Actual")
+plt.title("ConvLSTM GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
