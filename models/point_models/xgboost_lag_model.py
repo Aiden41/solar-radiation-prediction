@@ -136,15 +136,6 @@ y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32)
 remaining_columns = list(x_train.columns)
 # print(remaining_columns)
 
-# create a mask of daytime hours to generate averages
-train_mask = (train_dataset['Solar Zenith Angle'] < 90)
-valid_mask = (valid_dataset['Solar Zenith Angle'] < 90)
-test_mask = (test_dataset['Solar Zenith Angle'] < 90)
-
-train_average_GHI = np.mean(train_dataset['GHI'][train_mask])
-valid_average_GHI = np.mean(valid_dataset['GHI'][valid_mask])
-test_average_GHI = np.mean(test_dataset['GHI'][test_mask])
-
 # get column titles for ColumnTransformer, excluding cyclical features
 x_columns = ['Wind Speed', 'Wind Direction', 'Precipitable Water', 'SSA', 'Relative Humidity']
 y_columns = list(y_train)
@@ -155,14 +146,18 @@ x_train = x_scaler.fit_transform(x_train).astype(np.float32)
 x_valid = x_scaler.transform(x_valid).astype(np.float32)
 x_test = x_scaler.transform(x_test).astype(np.float32)
 
-train_weights = (train_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
-valid_weights = (valid_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
+sza_train = train_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
+sza_valid = valid_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
+sza_test = test_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
 
 train_pred = np.zeros_like(y_train)
 valid_pred = np.zeros_like(y_valid)
 test_pred = np.zeros_like(y_test)
 
 for h in range(horizon):
+    train_weights = (sza_train[:, h] < 90).astype(np.float32)
+    valid_weights = (sza_valid[:, h] < 90).astype(np.float32)
+
     model = XGBRegressor(n_estimators=1000, eval_metric="rmse", objective="reg:pseudohubererror", early_stopping_rounds=100, eta=0.05)
 
     model.fit(x_train, y_train[:, h], sample_weight=train_weights, eval_set=[(x_valid, y_valid[:, h])], 
@@ -202,6 +197,14 @@ train_true = train_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy
 valid_true = valid_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
 test_true = test_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
 
+train_mask = sza_train < 90
+valid_mask = sza_valid < 90
+test_mask = sza_test < 90
+
+train_pred[sza_train >= 90] = 0
+valid_pred[sza_valid >= 90] = 0
+test_pred[sza_test >= 90] = 0
+
 # mask real values to daytime only
 train_true_day = train_true[train_mask]
 valid_true_day = valid_true[valid_mask]
@@ -221,6 +224,10 @@ test_mse = mean_squared_error(test_true_day, test_pred_day)
 train_rmse = np.sqrt(train_mse)
 valid_rmse = np.sqrt(valid_mse)
 test_rmse = np.sqrt(test_mse)
+
+train_average_GHI = np.mean(train_true_day)
+valid_average_GHI = np.mean(valid_true_day)
+test_average_GHI = np.mean(test_true_day)
 
 # NRMSE (normalize by daytime mean GHI)
 train_nrmse = train_rmse / train_average_GHI

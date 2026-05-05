@@ -117,15 +117,6 @@ y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32)
 remaining_columns = list(x_train.columns)
 # print(remaining_columns)
 
-# create a mask of daytime hours to generate averages
-train_mask = (train_dataset['Solar Zenith Angle'] < 90)
-valid_mask = (valid_dataset['Solar Zenith Angle'] < 90)
-test_mask = (test_dataset['Solar Zenith Angle'] < 90)
-
-train_average_GHI = np.mean(train_dataset['GHI'][train_mask])
-valid_average_GHI = np.mean(valid_dataset['GHI'][valid_mask])
-test_average_GHI = np.mean(test_dataset['GHI'][test_mask])
-
 # get column titles for ColumnTransformer, excluding cyclical features
 x_columns = ['Wind Speed', 'Wind Direction', 'Precipitable Water', 'SSA', 'Relative Humidity']
 y_columns = list(y_train)
@@ -251,6 +242,10 @@ train_mask = sza_train[train_idx] < 90
 valid_mask = sza_valid[valid_idx] < 90
 test_mask = sza_test[test_idx] < 90
 
+train_pred[sza_train[train_idx] >= 90] = 0
+valid_pred[sza_valid[valid_idx] >= 90] = 0
+test_pred[sza_test[test_idx] >= 90] = 0
+
 train_true = y_train[train_idx]
 valid_true = y_valid[valid_idx]
 test_true = y_test[test_idx]
@@ -272,6 +267,10 @@ test_mse = mean_squared_error(test_true_day, test_pred_day)
 train_rmse = np.sqrt(train_mse)
 valid_rmse = np.sqrt(valid_mse)
 test_rmse = np.sqrt(test_mse)
+
+train_average_GHI = np.mean(train_true_day)
+valid_average_GHI = np.mean(valid_true_day)
+test_average_GHI = np.mean(test_true_day)
 
 # NRMSE (normalize by daytime mean GHI)
 train_nrmse = train_rmse / train_average_GHI
