@@ -124,14 +124,6 @@ train_targets = []
 valid_targets = [] 
 test_targets = []
 
-train_true_csi = []
-valid_true_csi = []
-test_true_csi = []
-
-train_pred_csi = []
-valid_pred_csi = []
-test_pred_csi = []
-
 train_se = 0.0
 valid_se = 0.0
 test_se = 0.0
@@ -168,9 +160,6 @@ for id_batch, (x_batch, y_batch) in enumerate(dataset):
         train_preds_day.append(pred)
         train_targets.append(y)
 
-        train_true_csi.append(csi_y)
-        train_pred_csi.append(csi_pred)
-
     else:
         pred = zero.item()
     
@@ -196,9 +185,6 @@ for id_batch, (x_batch, y_batch) in enumerate(valid_dataset):
         valid_preds_day.append(pred)
         valid_targets.append(y)
 
-        valid_true_csi.append(csi_y)
-        valid_pred_csi.append(csi_pred)
-
     else:
         pred = zero.item()
     
@@ -223,9 +209,6 @@ for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
 
         test_preds_day.append(pred)
         test_targets.append(y)
-
-        test_true_csi.append(csi_y)
-        test_pred_csi.append(csi_pred)
 
     else:
         pred = zero.item()
@@ -283,7 +266,6 @@ valid_r2 = 1 - np.sum((valid_targets - valid_preds_day)**2) / np.sum((valid_targ
 test_r2 = 1 - np.sum((test_targets - test_preds_day)**2) / np.sum((test_targets - test_mean_y)**2)
 
 # print results
-print("GHI-SPACE METRICS")
 print("Training Error")
 print("MSE:", train_mse)
 print("RMSE:", train_rmse)
@@ -311,52 +293,8 @@ print("MBE:", test_mbe)
 print("sMAPE:", test_smape)
 print("R^2:", test_r2)
 
-train_true_csi = np.asarray(train_true_csi)
-valid_true_csi = np.asarray(valid_true_csi)
-test_true_csi = np.asarray(test_true_csi)
-
-train_pred_csi = np.asarray(train_pred_csi)
-valid_pred_csi = np.asarray(valid_pred_csi)
-test_pred_csi = np.asarray(test_pred_csi)
-
-# CSI MAE
-train_csi_mae = np.mean(np.abs(train_true_csi - train_pred_csi))
-valid_csi_mae = np.mean(np.abs(valid_true_csi - valid_pred_csi))
-test_csi_mae = np.mean(np.abs(test_true_csi - test_pred_csi))
-
-# CSI sMAPE
-train_csi_smape = smape(train_true_csi, train_pred_csi)
-valid_csi_smape = smape(valid_true_csi, valid_pred_csi)
-test_csi_smape = smape(test_true_csi, test_pred_csi)
-
-# CSI R^2
-train_csi_mean = np.mean(train_true_csi)
-valid_csi_mean = np.mean(valid_true_csi)
-test_csi_mean = np.mean(test_true_csi)
-
-train_csi_r2 = 1 - np.sum((train_true_csi - train_pred_csi)**2) / np.sum((train_true_csi - train_csi_mean)**2)
-valid_csi_r2 = 1 - np.sum((valid_true_csi - valid_pred_csi)**2) / np.sum((valid_true_csi - valid_csi_mean)**2)
-test_csi_r2 = 1 - np.sum((test_true_csi - test_pred_csi)**2) / np.sum((test_true_csi - test_csi_mean)**2)
-
-print("\nCSI-SPACE METRICS")
-print("Training Error")
-print("MAE: ", train_csi_mae)
-print("sMAPE: ", train_csi_smape)
-print("R^2:", train_csi_r2)
-
-print("\nValidation Error")
-print("MAE: ", valid_csi_mae)
-print("sMAPE: ", valid_csi_smape)
-print("R^2: ", valid_csi_r2)
-
-print("\nTesting Error")
-print("MAE: ", test_csi_mae)
-print("sMAPE: ", test_csi_smape)
-print("R^2: ", test_csi_r2)
-
 # save results
 with open("results/baseline_results/smart_persistence.txt", 'w') as file:
-    file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -383,22 +321,6 @@ with open("results/baseline_results/smart_persistence.txt", 'w') as file:
     file.write("MBE: " + str(test_mbe) + "\n")
     file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2) + "\n")
-
-    file.write("\nCSI-SPACE METRICS\n")
-    file.write("Training Error\n")
-    file.write("MAE: " + str(train_csi_mae) + "\n")
-    file.write("sMAPE: " + str(train_csi_smape) + "\n")
-    file.write("R^2: " + str(train_csi_r2) + "\n")
-
-    file.write("\nValidation Error\n")
-    file.write("MAE: " + str(valid_csi_mae) + "\n")
-    file.write("sMAPE: " + str(valid_csi_smape) + "\n")
-    file.write("R^2: " + str(valid_csi_r2) + "\n")
-
-    file.write("\nTesting Error\n")
-    file.write("MAE: " + str(test_csi_mae) + "\n")
-    file.write("sMAPE: " + str(test_csi_smape) + "\n")
-    file.write("R^2: " + str(test_csi_r2))
 
 # plot the results
 hours = np.arange(864) * (5/60) # 5 minutes to hours
