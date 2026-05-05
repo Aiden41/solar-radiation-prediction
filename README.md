@@ -1,6 +1,6 @@
 Codebase for solar radiation prediction research.
 
-Current development is on moving models to predict hour-ahead sequences of GHI instead of single CSI predictions.
+Current development is on making models predict hour-ahead sequences.
 
 Future work includes creating deep learning models, grid shape + spacing optimizations, and generating various plots for paper figures.
 
