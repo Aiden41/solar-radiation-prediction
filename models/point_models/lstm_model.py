@@ -19,6 +19,8 @@ offset = 1 # number of rows ahead to predict
 horizon = 12 # number of values to predict
 seq_len = 12 # number of rows
 
+target = 'CSI' # GHI or CSI
+
 # read in data
 dataset = pd.read_csv('data/5min/row4/4/data.csv', dtype=np.float32)
 dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
@@ -87,6 +89,14 @@ for h in range(horizon):
     valid_dataset[f"Future_GHI_{h}"] = valid_dataset["GHI"].shift(-shift)
     test_dataset[f"Future_GHI_{h}"] = test_dataset["GHI"].shift(-shift)
 
+    train_dataset[f"Future_CSI_{h}"] = train_dataset["CSI"].shift(-shift)
+    valid_dataset[f"Future_CSI_{h}"] = valid_dataset["CSI"].shift(-shift)
+    test_dataset[f"Future_CSI_{h}"] = test_dataset["CSI"].shift(-shift)
+
+    train_dataset[f"Future_CS_GHI_{h}"] = train_dataset["Clearsky GHI"].shift(-shift)
+    valid_dataset[f"Future_CS_GHI_{h}"] = valid_dataset["Clearsky GHI"].shift(-shift)
+    test_dataset[f"Future_CS_GHI_{h}"] = test_dataset["Clearsky GHI"].shift(-shift)
+
     train_dataset[f"Future_SZA_{h}"] = train_dataset["Solar Zenith Angle"].shift(-shift)
     valid_dataset[f"Future_SZA_{h}"] = valid_dataset["Solar Zenith Angle"].shift(-shift)
     test_dataset[f"Future_SZA_{h}"] = test_dataset["Solar Zenith Angle"].shift(-shift)
@@ -100,7 +110,7 @@ test_dataset = test_dataset.iloc[:-cut]
 
 future_columns = []
 for h in range(horizon):
-    future_columns += [f"Future_SZA_{h}", f"Future_GHI_{h}"]
+    future_columns += [f"Future_SZA_{h}", f"Future_GHI_{h}", f"Future_CSI_{h}", f"Future_CS_GHI_{h}"]
 
 drop_columns = ['Minute', 'Month', 'Hour', 'Year', 'Day', 'DayOfYear', 'Temperature', 'Alpha', 'Ozone', 'Dew Point', 'Surface Albedo', 'Pressure', 'Aerosol Optical Depth', 'Asymmetry', 'Clearsky DNI', 'Clearsky DHI', 'Clearsky GHI'] + future_columns
 
@@ -109,10 +119,21 @@ x_train = train_dataset.drop(columns = drop_columns)
 x_valid = valid_dataset.drop(columns = drop_columns)
 x_test = test_dataset.drop(columns = drop_columns)
 
-future_ghi_cols = [f"Future_GHI_{h}" for h in range(horizon)]
-y_train = train_dataset[future_ghi_cols].to_numpy().astype(np.float32)
-y_valid = valid_dataset[future_ghi_cols].to_numpy().astype(np.float32)
-y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32)
+if target == "CSI":
+    future_csi_cols = [f"Future_CSI_{h}" for h in range(horizon)]
+    y_train = train_dataset[future_csi_cols].to_numpy().astype(np.float32)
+    y_valid = valid_dataset[future_csi_cols].to_numpy().astype(np.float32)
+    y_test = test_dataset[future_csi_cols].to_numpy().astype(np.float32)
+
+    future_csghi_cols = [f"Future_CS_GHI_{h}" for h in range(horizon)]
+    train_csghi = train_dataset[future_csghi_cols].to_numpy().astype(np.float32)
+    valid_csghi = valid_dataset[future_csghi_cols].to_numpy().astype(np.float32)
+    test_csghi = test_dataset[future_csghi_cols].to_numpy().astype(np.float32)
+else:
+    future_ghi_cols = [f"Future_GHI_{h}" for h in range(horizon)]
+    y_train = train_dataset[future_ghi_cols].to_numpy().astype(np.float32)
+    y_valid = valid_dataset[future_ghi_cols].to_numpy().astype(np.float32)
+    y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32)
 
 # remaining_columns = list(x_train.columns)
 # print(remaining_columns)
@@ -234,6 +255,11 @@ train_idx = train_ds.valid
 valid_idx = valid_ds.valid
 test_idx = test_ds.valid
 
+if target == 'CSI':
+    train_pred = train_pred * train_csghi[train_idx]
+    valid_pred = valid_pred * valid_csghi[valid_idx]
+    test_pred = test_pred * test_csghi[test_idx]
+
 sza_train = train_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
 sza_valid = valid_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
 sza_test = test_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
@@ -250,9 +276,9 @@ train_pred[sza_train[train_idx] >= 90] = 0
 valid_pred[sza_valid[valid_idx] >= 90] = 0
 test_pred[sza_test[test_idx] >= 90] = 0
 
-train_true = y_train[train_idx]
-valid_true = y_valid[valid_idx]
-test_true = y_test[test_idx]
+train_true = train_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[train_idx]
+valid_true = valid_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[valid_idx]
+test_true = test_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[test_idx]
 
 train_true_day = train_true[train_mask]
 valid_true_day = valid_true[valid_mask]
@@ -413,7 +439,7 @@ print("sMAPE:", test_energy_smape)
 print("R^2:", test_energy_r2)
 
 # save results
-with open(f"results/point_results/lstm_{seq_len}.txt", 'w') as file:
+with open(f"results/point_results/lstm_{target.lower()}_{seq_len}.txt", 'w') as file:
     file.write("GHI METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
@@ -478,5 +504,5 @@ plt.title(f"LSTM ({seq_len} Rows) Hourly Energy Pred vs Actual")
 plt.legend()
 plt.ylabel("Energy (Wh/m\u00b2)")
 plt.xlabel("Hour")
-plt.savefig(f"results/point_results/lstm_{seq_len}.pdf")
+plt.savefig(f"results/point_results/lstm_{target.lower()}_{seq_len}.pdf")
 plt.show(block=False)

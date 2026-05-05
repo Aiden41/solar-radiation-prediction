@@ -17,6 +17,8 @@ patience = 8
 offset = 1 # number of rows ahead to predict
 horizon = 12 # number of values to predict 
 
+target = 'GHI' # GHI or CSI
+
 # read in data
 dataset = pd.read_csv('data/5min/row4/4/data.csv', dtype=np.float32)
 dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
@@ -85,6 +87,14 @@ for h in range(horizon):
     valid_dataset[f"Future_GHI_{h}"] = valid_dataset["GHI"].shift(-shift)
     test_dataset[f"Future_GHI_{h}"] = test_dataset["GHI"].shift(-shift)
 
+    train_dataset[f"Future_CSI_{h}"] = train_dataset["CSI"].shift(-shift)
+    valid_dataset[f"Future_CSI_{h}"] = valid_dataset["CSI"].shift(-shift)
+    test_dataset[f"Future_CSI_{h}"] = test_dataset["CSI"].shift(-shift)
+
+    train_dataset[f"Future_CS_GHI_{h}"] = train_dataset["Clearsky GHI"].shift(-shift)
+    valid_dataset[f"Future_CS_GHI_{h}"] = valid_dataset["Clearsky GHI"].shift(-shift)
+    test_dataset[f"Future_CS_GHI_{h}"] = test_dataset["Clearsky GHI"].shift(-shift)
+
     train_dataset[f"Future_SZA_{h}"] = train_dataset["Solar Zenith Angle"].shift(-shift)
     valid_dataset[f"Future_SZA_{h}"] = valid_dataset["Solar Zenith Angle"].shift(-shift)
     test_dataset[f"Future_SZA_{h}"] = test_dataset["Solar Zenith Angle"].shift(-shift)
@@ -98,7 +108,7 @@ test_dataset = test_dataset.iloc[:-cut]
 
 future_columns = []
 for h in range(horizon):
-    future_columns += [f"Future_SZA_{h}", f"Future_GHI_{h}"]
+    future_columns += [f"Future_SZA_{h}", f"Future_GHI_{h}", f"Future_CSI_{h}", f"Future_CS_GHI_{h}"]
 
 drop_columns = ['Minute', 'Month', 'Hour', 'Year', 'Day', 'DayOfYear', 'Temperature', 'Alpha', 'Ozone', 'Dew Point', 'Surface Albedo', 'Pressure', 'Aerosol Optical Depth', 'Asymmetry', 'Clearsky DNI', 'Clearsky DHI', 'Clearsky GHI'] + future_columns
 
@@ -107,10 +117,21 @@ x_train = train_dataset.drop(columns = drop_columns)
 x_valid = valid_dataset.drop(columns = drop_columns)
 x_test = test_dataset.drop(columns = drop_columns)
 
-future_ghi_cols = [f"Future_GHI_{h}" for h in range(horizon)]
-y_train = train_dataset[future_ghi_cols].to_numpy().astype(np.float32)
-y_valid = valid_dataset[future_ghi_cols].to_numpy().astype(np.float32)
-y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32)
+if target == "CSI":
+    future_csi_cols = [f"Future_CSI_{h}" for h in range(horizon)]
+    y_train = train_dataset[future_csi_cols].to_numpy().astype(np.float32)
+    y_valid = valid_dataset[future_csi_cols].to_numpy().astype(np.float32)
+    y_test = test_dataset[future_csi_cols].to_numpy().astype(np.float32)
+
+    future_csghi_cols = [f"Future_CS_GHI_{h}" for h in range(horizon)]
+    train_csghi = train_dataset[future_csghi_cols].to_numpy().astype(np.float32)
+    valid_csghi = valid_dataset[future_csghi_cols].to_numpy().astype(np.float32)
+    test_csghi = test_dataset[future_csghi_cols].to_numpy().astype(np.float32)
+else:
+    future_ghi_cols = [f"Future_GHI_{h}" for h in range(horizon)]
+    y_train = train_dataset[future_ghi_cols].to_numpy().astype(np.float32)
+    y_valid = valid_dataset[future_ghi_cols].to_numpy().astype(np.float32)
+    y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32)
 
 # remaining_columns = list(x_train.columns)
 # print(remaining_columns)
@@ -232,6 +253,11 @@ with torch.no_grad():
     train_pred = model(train_tensor).cpu().numpy()
     valid_pred = model(valid_tensor).cpu().numpy()
     test_pred = model(torch.tensor(x_test, dtype=torch.float32, device=device)).cpu().numpy()
+
+if target == 'CSI':
+    train_pred = train_pred * train_csghi
+    valid_pred = valid_pred * valid_csghi
+    test_pred = test_pred * test_csghi
 
 sza_train = train_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
 sza_valid = valid_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
@@ -414,7 +440,7 @@ print("sMAPE:", test_energy_smape)
 print("R^2:", test_energy_r2)
 
 # save results
-with open("results/point_results/mlp.txt", 'w') as file:
+with open(f"results/point_results/mlp_{target.lower()}.txt", 'w') as file:
     file.write("GHI METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
@@ -479,5 +505,5 @@ plt.title("MLP Hourly Energy Pred vs Actual")
 plt.legend()
 plt.ylabel("Energy (Wh/m\u00b2)")
 plt.xlabel("Hour")
-plt.savefig("results/point_results/mlp.pdf")
+plt.savefig(f"results/point_results/mlp_{target.lower()}.pdf")
 plt.show(block=False)
