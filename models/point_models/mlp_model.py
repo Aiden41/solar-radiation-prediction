@@ -250,14 +250,14 @@ train_mask = sza_train < 90
 valid_mask = sza_valid < 90
 test_mask = sza_test < 90
 
-true_train_ghi = train_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
-true_valid_ghi = valid_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
-true_test_ghi = test_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
+train_true = train_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
+valid_true = valid_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
+test_true = test_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
 
 # mask real values to daytime only
-train_true = true_train_ghi[train_mask]
-valid_true = true_valid_ghi[valid_mask]
-test_true = true_test_ghi[test_mask]
+train_true_day = train_true[train_mask]
+valid_true_day = valid_true[valid_mask]
+test_true_day = test_true[test_mask]
 
 # mask predictions to daytime only
 train_pred_day = train_pred[train_mask]
@@ -265,9 +265,9 @@ valid_pred_day = valid_pred[valid_mask]
 test_pred_day = test_pred[test_mask]
 
 # MSE
-train_mse = mean_squared_error(train_true, train_pred_day)
-valid_mse = mean_squared_error(valid_true, valid_pred_day)
-test_mse = mean_squared_error(test_true, test_pred_day)
+train_mse = mean_squared_error(train_true_day, train_pred_day)
+valid_mse = mean_squared_error(valid_true_day, valid_pred_day)
+test_mse = mean_squared_error(test_true_day, test_pred_day)
 
 # RMSE
 train_rmse = np.sqrt(train_mse)
@@ -280,17 +280,17 @@ valid_nrmse = valid_rmse / valid_average_GHI
 test_nrmse = test_rmse / test_average_GHI
 
 # MAE
-train_mae = mean_absolute_error(train_true, train_pred_day)
-valid_mae = mean_absolute_error(valid_true, valid_pred_day)
-test_mae = mean_absolute_error(test_true, test_pred_day)
+train_mae = mean_absolute_error(train_true_day, train_pred_day)
+valid_mae = mean_absolute_error(valid_true_day, valid_pred_day)
+test_mae = mean_absolute_error(test_true_day, test_pred_day)
 
 # MBE
 def mbe(y_true, y_pred):
     return np.mean(y_pred - y_true)
 
-train_mbe = mbe(train_true, train_pred_day)
-valid_mbe = mbe(valid_true, valid_pred_day)
-test_mbe = mbe(test_true, test_pred_day)
+train_mbe = mbe(train_true_day, train_pred_day)
+valid_mbe = mbe(valid_true_day, valid_pred_day)
+test_mbe = mbe(test_true_day, test_pred_day)
 
 # sMAPE
 def smape(y_true, y_pred):
@@ -298,14 +298,14 @@ def smape(y_true, y_pred):
     mask = den > 1e-6
     return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
 
-train_smape = smape(train_true, train_pred_day)
-valid_smape = smape(valid_true, valid_pred_day)
-test_smape = smape(test_true, test_pred_day)
+train_smape = smape(train_true_day, train_pred_day)
+valid_smape = smape(valid_true_day, valid_pred_day)
+test_smape = smape(test_true_day, test_pred_day)
 
 # R^2
-train_r2 = r2_score(train_true, train_pred_day)
-valid_r2 = r2_score(valid_true, valid_pred_day)
-test_r2 = r2_score(test_true, test_pred_day)
+train_r2 = r2_score(train_true_day, train_pred_day)
+valid_r2 = r2_score(valid_true_day, valid_pred_day)
+test_r2 = r2_score(test_true_day, test_pred_day)
 
 # print results
 print("Training Error")
