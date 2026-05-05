@@ -7,8 +7,9 @@ from matplotlib import pyplot as plt
 from xgboost import XGBRegressor
 from sklearn.inspection import permutation_importance
 
-offset = 12 # number of rows ahead to predict
+offset = 1 # number of rows ahead to predict
 horizon = 12 # number of values to predict
+total_rows = 12 # number of rows with lags
 
 # read in data
 dataset = pd.read_csv('data/5min/row4/4/data.csv', dtype=np.float32)
@@ -77,7 +78,7 @@ lag_vars = [
     "Relative Humidity", "Precipitable Water"
 ]
 
-lags = range(1, 12)
+lags = range(1, total_rows)
 
 def build_lag_df(df, vars_to_lag):
     lagged = {}
@@ -101,14 +102,14 @@ test_dataset = test_dataset.iloc[max_lag:].reset_index(drop=True)
 
 # move up deterministic columns and place into new columns
 for h in range(horizon):
-    step = offset + h
-    train_dataset[f"Future_GHI_{h}"] = train_dataset["GHI"].shift(-step)
-    valid_dataset[f"Future_GHI_{h}"] = valid_dataset["GHI"].shift(-step)
-    test_dataset[f"Future_GHI_{h}"] = test_dataset["GHI"].shift(-step)
+    shift = offset + h
+    train_dataset[f"Future_GHI_{h}"] = train_dataset["GHI"].shift(-shift)
+    valid_dataset[f"Future_GHI_{h}"] = valid_dataset["GHI"].shift(-shift)
+    test_dataset[f"Future_GHI_{h}"] = test_dataset["GHI"].shift(-shift)
 
-    train_dataset[f"Future_SZA_{h}"] = train_dataset["Solar Zenith Angle"].shift(-step)
-    valid_dataset[f"Future_SZA_{h}"] = valid_dataset["Solar Zenith Angle"].shift(-step)
-    test_dataset[f"Future_SZA_{h}"] = test_dataset["Solar Zenith Angle"].shift(-step)
+    train_dataset[f"Future_SZA_{h}"] = train_dataset["Solar Zenith Angle"].shift(-shift)
+    valid_dataset[f"Future_SZA_{h}"] = valid_dataset["Solar Zenith Angle"].shift(-shift)
+    test_dataset[f"Future_SZA_{h}"] = test_dataset["Solar Zenith Angle"].shift(-shift)
 
 cut = offset + horizon
 train_dataset = train_dataset.iloc[:-cut]
@@ -121,7 +122,7 @@ future_columns = []
 for h in range(horizon):
     future_columns += [f"Future_SZA_{h}", f"Future_GHI_{h}"]
 
-drop_columns = ['Minute', 'Month', 'Hour', 'Year', 'Day', 'DayOfYear', 'Temperature', 'Alpha', 'Ozone', 'Dew Point', 'Surface Albedo', 'Pressure', 'Aerosol Optical Depth', 'Asymmetry', 'Solar Zenith Angle', 'Clearsky DNI', 'Clearsky DHI', 'Clearsky GHI'] + future_columns
+drop_columns = ['Minute', 'Month', 'Hour', 'Year', 'Day', 'DayOfYear', 'Temperature', 'Alpha', 'Ozone', 'Dew Point', 'Surface Albedo', 'Pressure', 'Aerosol Optical Depth', 'Asymmetry', 'Clearsky DNI', 'Clearsky DHI', 'Clearsky GHI'] + future_columns
 
 # drop unused columns and get values out of dataframe
 x_train = train_dataset.drop(columns = drop_columns)
@@ -133,7 +134,7 @@ y_train = train_dataset[future_ghi_cols].to_numpy().astype(np.float32)
 y_valid = valid_dataset[future_ghi_cols].to_numpy().astype(np.float32)
 y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32)
 
-remaining_columns = list(x_train.columns)
+# remaining_columns = list(x_train.columns)
 # print(remaining_columns)
 
 # get column titles for ColumnTransformer, excluding cyclical features
@@ -201,6 +202,10 @@ train_mask = sza_train < 90
 valid_mask = sza_valid < 90
 test_mask = sza_test < 90
 
+test_pred = np.maximum(test_pred, 0)
+valid_pred = np.maximum(valid_pred, 0)
+train_pred = np.maximum(train_pred, 0)
+
 train_pred[sza_train >= 90] = 0
 valid_pred[sza_valid >= 90] = 0
 test_pred[sza_test >= 90] = 0
@@ -263,6 +268,7 @@ valid_r2 = r2_score(valid_true_day, valid_pred_day)
 test_r2 = r2_score(test_true_day, test_pred_day)
 
 # print results
+print("GHI METRICS")
 print("Training Error")
 print("MSE:", train_mse)
 print("RMSE:", train_rmse)
@@ -290,8 +296,83 @@ print("MBE:", test_mbe)
 print("sMAPE:", test_smape)
 print("R^2:", test_r2)
 
+train_actual_energy = train_true.sum(axis=1) * (5/60)
+train_pred_energy = train_pred.sum(axis=1) * (5/60)
+
+valid_actual_energy = valid_true.sum(axis=1) * (5/60)
+valid_pred_energy = valid_pred.sum(axis=1) * (5/60)
+
+test_actual_energy = test_true.sum(axis=1) * (5/60)
+test_pred_energy = test_pred.sum(axis=1) * (5/60)
+
+train_energy_mask = (sza_train < 90).any(axis=1)
+valid_energy_mask = (sza_valid < 90).any(axis=1)
+test_energy_mask = (sza_test < 90).any(axis=1)
+
+train_actual_energy_day = train_actual_energy[train_energy_mask]
+train_pred_energy_day = train_pred_energy[train_energy_mask]
+
+valid_actual_energy_day = valid_actual_energy[valid_energy_mask]
+valid_pred_energy_day = valid_pred_energy[valid_energy_mask]
+
+test_actual_energy_day = test_actual_energy[test_energy_mask]
+test_pred_energy_day = test_pred_energy[test_energy_mask]
+
+train_energy_mse = mean_squared_error(train_actual_energy_day, train_pred_energy_day)
+train_energy_rmse = np.sqrt(train_energy_mse)
+train_energy_nrmse = train_energy_rmse / np.mean(train_actual_energy_day)
+train_energy_mae = mean_absolute_error(train_actual_energy_day, train_pred_energy_day)
+train_energy_mbe = np.mean(train_pred_energy_day - train_actual_energy_day)
+train_energy_smape = smape(train_actual_energy_day, train_pred_energy_day)
+train_energy_r2 = r2_score(train_actual_energy_day, train_pred_energy_day)
+
+valid_energy_mse = mean_squared_error(valid_actual_energy_day, valid_pred_energy_day)
+valid_energy_rmse = np.sqrt(valid_energy_mse)
+valid_energy_nrmse = valid_energy_rmse / np.mean(valid_actual_energy_day)
+valid_energy_mae = mean_absolute_error(valid_actual_energy_day, valid_pred_energy_day)
+valid_energy_mbe = np.mean(valid_pred_energy_day - valid_actual_energy_day)
+valid_energy_smape = smape(valid_actual_energy_day, valid_pred_energy_day)
+valid_energy_r2 = r2_score(valid_actual_energy_day, valid_pred_energy_day)
+
+test_energy_mse = mean_squared_error(test_actual_energy_day, test_pred_energy_day)
+test_energy_rmse = np.sqrt(test_energy_mse)
+test_energy_nrmse = test_energy_rmse / np.mean(test_actual_energy_day)
+test_energy_mae = mean_absolute_error(test_actual_energy_day, test_pred_energy_day)
+test_energy_mbe = np.mean(test_pred_energy_day - test_actual_energy_day)
+test_energy_smape = smape(test_actual_energy_day, test_pred_energy_day)
+test_energy_r2 = r2_score(test_actual_energy_day, test_pred_energy_day)
+
+print("\nENERGY METRICS")
+print("Training Error")
+print("MSE:", train_energy_mse)
+print("RMSE:", train_energy_rmse)
+print("NRMSE:", train_energy_nrmse)
+print("MAE:", train_energy_mae)
+print("MBE:", train_energy_mbe)
+print("sMAPE:", train_energy_smape)
+print("R^2:", train_energy_r2)
+
+print("\nValidation Error")
+print("MSE:", valid_energy_mse)
+print("RMSE:", valid_energy_rmse)
+print("NRMSE:", valid_energy_nrmse)
+print("MAE:", valid_energy_mae)
+print("MBE:", valid_energy_mbe)
+print("sMAPE:", valid_energy_smape)
+print("R^2:", valid_energy_r2)
+
+print("\nTesting Error")
+print("MSE:", test_energy_mse)
+print("RMSE:", test_energy_rmse)
+print("NRMSE:", test_energy_nrmse)
+print("MAE:", test_energy_mae)
+print("MBE:", test_energy_mbe)
+print("sMAPE:", test_energy_smape)
+print("R^2:", test_energy_r2)
+
 # save results
 with open(f"results/point_results/xgboost_lag_{max(lags)+1}.txt", 'w') as file:
+    file.write("GHI METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -319,12 +400,38 @@ with open(f"results/point_results/xgboost_lag_{max(lags)+1}.txt", 'w') as file:
     file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2) + "\n")
 
+    file.write("\nENERGY METRICS\n")
+    file.write("Training Error\n")
+    file.write("MSE: " + str(train_energy_mse) + "\n")
+    file.write("RMSE: " + str(train_energy_rmse) + "\n")
+    file.write("NRMSE: " + str(train_energy_nrmse) + "\n")
+    file.write("MAE: " + str(train_energy_mae) + "\n")
+    file.write("MBE: " + str(train_energy_mbe) + "\n")
+    file.write("sMAPE: " + str(train_energy_smape) + "\n")
+    file.write("R^2: " + str(train_energy_r2) + "\n")
+
+    file.write("\nValidation Error\n")
+    file.write("MSE: " + str(valid_energy_mse) + "\n")
+    file.write("RMSE: " + str(valid_energy_rmse) + "\n")
+    file.write("NRMSE: " + str(valid_energy_nrmse) + "\n")
+    file.write("MAE: " + str(valid_energy_mae) + "\n")
+    file.write("MBE: " + str(valid_energy_mbe) + "\n")
+    file.write("sMAPE: " + str(valid_energy_smape) + "\n")
+    file.write("R^2: " + str(valid_energy_r2) + "\n")
+
+    file.write("\nTesting Error\n")
+    file.write("MSE: " + str(test_energy_mse) + "\n")
+    file.write("RMSE: " + str(test_energy_rmse) + "\n")
+    file.write("NRMSE: " + str(test_energy_nrmse) + "\n")
+    file.write("MAE: " + str(test_energy_mae) + "\n")
+    file.write("MBE: " + str(test_energy_mbe) + "\n")
+    file.write("sMAPE: " + str(test_energy_smape) + "\n")
+    file.write("R^2: " + str(test_energy_r2) + "\n")
+
 # plot the results
 hours = np.arange(864) * (5/60) # 5 minutes to hours
-actual_energy = test_true.sum(axis=1) * (5/60)
-pred_energy = test_pred.sum(axis=1) * (5/60)
-plt.plot(hours, actual_energy[:864], label="Actual")
-plt.plot(hours, pred_energy[:864], label="Predicted")
+plt.plot(hours, test_actual_energy[:864], label="Actual")
+plt.plot(hours, test_pred_energy[:864], label="Predicted")
 plt.title(f"XGBoost ({max(lags)+1} Rows) Hourly Energy Pred vs Actual")
 plt.legend()
 plt.ylabel("Energy (Wh/m\u00b2)")
