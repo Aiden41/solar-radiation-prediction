@@ -20,5 +20,4 @@ class SolarDataset(Dataset):
         if self.flatten:
             seq = seq.view(-1)
 
-        return seq, target.unsqueeze(0)
-
+        return seq, target

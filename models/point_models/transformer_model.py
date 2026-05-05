@@ -17,6 +17,7 @@ early_stopping = True
 patience = 8
 
 offset = 12 # number of rows ahead to predict
+horizon = 12 # number of values to predict
 
 # read in data
 dataset = pd.read_csv('data/5min/row4/4/data.csv', dtype=np.float32)
@@ -80,55 +81,38 @@ mask = test_dataset['Solar Zenith Angle'] >= 90
 test_dataset.loc[mask, 'CSI'] = 0.0
 
 # move up deterministic columns and place into new columns
-train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-offset)
-valid_dataset["Future_SZA"] = valid_dataset["Solar Zenith Angle"].shift(-offset)
-test_dataset["Future_SZA"] = test_dataset["Solar Zenith Angle"].shift(-offset)
+for h in range(horizon):
+    step = offset + h
+    train_dataset[f"Future_GHI_{h}"] = train_dataset["GHI"].shift(-step)
+    valid_dataset[f"Future_GHI_{h}"] = valid_dataset["GHI"].shift(-step)
+    test_dataset[f"Future_GHI_{h}"] = test_dataset["GHI"].shift(-step)
 
-train_dataset["Future_CS_GHI"] = train_dataset["Clearsky GHI"].shift(-offset)
-valid_dataset["Future_CS_GHI"] = valid_dataset["Clearsky GHI"].shift(-offset)
-test_dataset["Future_CS_GHI"] = test_dataset["Clearsky GHI"].shift(-offset)
+    train_dataset[f"Future_SZA_{h}"] = train_dataset["Solar Zenith Angle"].shift(-step)
+    valid_dataset[f"Future_SZA_{h}"] = valid_dataset["Solar Zenith Angle"].shift(-step)
+    test_dataset[f"Future_SZA_{h}"] = test_dataset["Solar Zenith Angle"].shift(-step)
 
-train_dataset["Future_CS_DNI"] = train_dataset["Clearsky DNI"].shift(-offset)
-valid_dataset["Future_CS_DNI"] = valid_dataset["Clearsky DNI"].shift(-offset)
-test_dataset["Future_CS_DNI"] = test_dataset["Clearsky DNI"].shift(-offset)
-
-train_dataset["Future_CS_DHI"] = train_dataset["Clearsky DHI"].shift(-offset)
-valid_dataset["Future_CS_DHI"] = valid_dataset["Clearsky DHI"].shift(-offset)
-test_dataset["Future_CS_DHI"] = test_dataset["Clearsky DHI"].shift(-offset)
-
-train_dataset["Future_GHI"] = train_dataset["GHI"].shift(-offset)
-valid_dataset["Future_GHI"] = valid_dataset["GHI"].shift(-offset)
-test_dataset["Future_GHI"] = test_dataset["GHI"].shift(-offset)
-
-train_dataset["Future_CSI"] = train_dataset["CSI"].shift(-offset)
-valid_dataset["Future_CSI"] = valid_dataset["CSI"].shift(-offset)
-test_dataset["Future_CSI"] = test_dataset["CSI"].shift(-offset)
-
-train_dataset = train_dataset.iloc[:-offset]
-valid_dataset = valid_dataset.iloc[:-offset]
-test_dataset = test_dataset.iloc[:-offset]
+cut = offset + horizon
+train_dataset = train_dataset.iloc[:-cut]
+valid_dataset = valid_dataset.iloc[:-cut]
+test_dataset = test_dataset.iloc[:-cut]
 
 # all_columns = list(train_dataset.columns)
 
-future_columns = ['Future_SZA', 'Future_CS_GHI', 'Future_CS_DNI', 'Future_CS_DHI', 'Future_GHI', 'Future_CSI']
+future_columns = []
+for h in range(horizon):
+    future_columns += [f"Future_SZA_{h}", f"Future_GHI_{h}"]
+
 drop_columns = ['Minute', 'Month', 'Hour', 'Year', 'Day', 'DayOfYear', 'Temperature', 'Alpha', 'Ozone', 'Dew Point', 'Surface Albedo', 'Pressure', 'Aerosol Optical Depth', 'Asymmetry', 'Solar Zenith Angle', 'Clearsky DNI', 'Clearsky DHI', 'Clearsky GHI'] + future_columns
 
 # drop unused columns and get values out of dataframe
 x_train = train_dataset.drop(columns = drop_columns)
-y_train = train_dataset[['Future_CSI']]
-y_train_ghi = train_dataset[['Future_GHI']]
-
 x_valid = valid_dataset.drop(columns = drop_columns)
-y_valid = valid_dataset[['Future_CSI']]
-y_valid_ghi = valid_dataset[['Future_GHI']]
-
 x_test = test_dataset.drop(columns = drop_columns)
-y_test = test_dataset[['Future_CSI']]
-y_test_ghi = test_dataset[['Future_GHI']]
 
-y_train_ghi = y_train_ghi.to_numpy().astype(np.float32).flatten()
-y_valid_ghi = y_valid_ghi.to_numpy().astype(np.float32).flatten()
-y_test_ghi = y_test_ghi.to_numpy().astype(np.float32).flatten()
+future_ghi_cols = [f"Future_GHI_{h}" for h in range(horizon)]
+y_train = train_dataset[future_ghi_cols].to_numpy().astype(np.float32)
+y_valid = valid_dataset[future_ghi_cols].to_numpy().astype(np.float32)
+y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32)
 
 remaining_columns = list(x_train.columns)
 # print(remaining_columns)
@@ -137,11 +121,9 @@ remaining_columns = list(x_train.columns)
 train_mask = (train_dataset['Solar Zenith Angle'] < 90)
 valid_mask = (valid_dataset['Solar Zenith Angle'] < 90)
 test_mask = (test_dataset['Solar Zenith Angle'] < 90)
-daytime_average = np.mean(train_dataset['CSI'][train_mask])
+
 train_average_GHI = np.mean(train_dataset['GHI'][train_mask])
-valid_average = np.mean(valid_dataset['CSI'][valid_mask])
 valid_average_GHI = np.mean(valid_dataset['GHI'][valid_mask])
-test_average = np.mean(test_dataset['CSI'][test_mask])
 test_average_GHI = np.mean(test_dataset['GHI'][test_mask])
 
 # get column titles for ColumnTransformer, excluding cyclical features
@@ -153,13 +135,6 @@ x_scaler = ColumnTransformer([("scaler", StandardScaler(), x_columns)], remainde
 x_train = x_scaler.fit_transform(x_train).astype(np.float32)
 x_valid = x_scaler.transform(x_valid).astype(np.float32)
 x_test = x_scaler.transform(x_test).astype(np.float32)
-
-y_train = y_train.to_numpy().astype(np.float32).flatten()
-y_valid = y_valid.to_numpy().astype(np.float32).flatten()
-y_test = y_test.to_numpy().astype(np.float32).flatten()
-
-train_weights = (train_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
-valid_weights = (valid_dataset['Solar Zenith Angle'] < 90).to_numpy().astype(np.float32)
 
 class TimeSeriesTransformer(nn.Module):
     def __init__(self, input_dim, seq_len, d_model=128, nhead=4, num_layers=4, dim_feedforward=256, dropout=0.1):
@@ -183,7 +158,7 @@ class TimeSeriesTransformer(nn.Module):
             nn.Linear(d_model, d_model),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(d_model, 1),
+            nn.Linear(d_model, horizon),
         )
 
     def _causal_mask(self, T, device):
@@ -287,7 +262,7 @@ def predict(model, loader):
         for xb, _ in loader:
             xb = xb.to(device)
             preds.append(model(xb).cpu().numpy())
-    return np.concatenate(preds, axis=0).reshape(-1)
+    return np.concatenate(preds, axis=0)
 
 model.eval()
 train_pred = predict(model, train_loader)
@@ -298,29 +273,25 @@ train_idx = train_ds.valid
 valid_idx = valid_ds.valid
 test_idx = test_ds.valid
 
-train_pred[train_dataset['Future_SZA'][train_idx] >= 90] = 0
-valid_pred[valid_dataset['Future_SZA'][valid_idx] >= 90] = 0
-test_pred[test_dataset['Future_SZA'][test_idx] >= 90] = 0
+sza_train = train_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
+sza_valid = valid_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
+sza_test = test_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
 
-train_pred_ghi = train_pred * train_dataset['Future_CS_GHI'].to_numpy()[train_idx]
-valid_pred_ghi = valid_pred * valid_dataset['Future_CS_GHI'].to_numpy()[valid_idx]
-test_pred_ghi = test_pred * test_dataset['Future_CS_GHI'].to_numpy()[test_idx]
+train_mask = sza_train[train_idx] < 90
+valid_mask = sza_valid[valid_idx] < 90
+test_mask = sza_test[test_idx] < 90
 
-train_mask = train_dataset['Future_SZA'][train_idx] < 90
-valid_mask = valid_dataset['Future_SZA'][valid_idx] < 90
-test_mask = test_dataset['Future_SZA'][test_idx] < 90
-
-train_true = y_train_ghi[train_idx]
-valid_true = y_valid_ghi[valid_idx]
-test_true = y_test_ghi[test_idx]
+train_true = y_train[train_idx]
+valid_true = y_valid[valid_idx]
+test_true = y_test[test_idx]
 
 train_true_day = train_true[train_mask]
 valid_true_day = valid_true[valid_mask]
 test_true_day = test_true[test_mask]
 
-train_pred_day = train_pred_ghi[train_mask]
-valid_pred_day = valid_pred_ghi[valid_mask]
-test_pred_day = test_pred_ghi[test_mask]
+train_pred_day = train_pred[train_mask]
+valid_pred_day = valid_pred[valid_mask]
+test_pred_day = test_pred[test_mask]
 
 # MSE
 train_mse = mean_squared_error(train_true_day, train_pred_day)
@@ -352,8 +323,6 @@ test_mbe = mbe(test_true_day, test_pred_day)
 
 # sMAPE
 def smape(y_true, y_pred):
-    y_true = np.asarray(y_true).flatten()
-    y_pred = np.asarray(y_pred).flatten()
     den = (np.abs(y_true) + np.abs(y_pred)) / 2.0
     mask = den > 1e-6
     return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
@@ -368,7 +337,6 @@ valid_r2 = r2_score(valid_true_day, valid_pred_day)
 test_r2 = r2_score(test_true_day, test_pred_day)
 
 # print results
-print("GHI-SPACE METRICS")
 print("Training Error")
 print("MSE:", train_mse)
 print("RMSE:", train_rmse)
@@ -396,48 +364,8 @@ print("MBE:", test_mbe)
 print("sMAPE:", test_smape)
 print("R^2:", test_r2)
 
-train_true_csi = y_train[train_idx][train_mask].flatten()
-valid_true_csi = y_valid[valid_idx][valid_mask].flatten()
-test_true_csi = y_test[test_idx][test_mask].flatten()
-
-train_pred_csi = train_pred[train_mask]
-valid_pred_csi = valid_pred[valid_mask]
-test_pred_csi = test_pred[test_mask]
-
-# CSI MAE
-train_csi_mae = mean_absolute_error(train_true_csi, train_pred_csi)
-valid_csi_mae = mean_absolute_error(valid_true_csi, valid_pred_csi)
-test_csi_mae = mean_absolute_error(test_true_csi, test_pred_csi)
-
-# CSI sMAPE
-train_csi_smape = smape(train_true_csi, train_pred_csi)
-valid_csi_smape = smape(valid_true_csi, valid_pred_csi)
-test_csi_smape = smape(test_true_csi, test_pred_csi)
-
-# CSI R^2
-train_csi_r2 = r2_score(train_true_csi, train_pred_csi)
-valid_csi_r2 = r2_score(valid_true_csi, valid_pred_csi)
-test_csi_r2 = r2_score(test_true_csi, test_pred_csi)
-
-print("\nCSI-SPACE METRICS")
-print("Training Error")
-print("MAE: ", train_csi_mae)
-print("sMAPE: ", train_csi_smape)
-print("R^2:", train_csi_r2)
-
-print("\nValidation Error")
-print("MAE: ", valid_csi_mae)
-print("sMAPE: ", valid_csi_smape)
-print("R^2: ", valid_csi_r2)
-
-print("\nTesting Error")
-print("MAE: ", test_csi_mae)
-print("sMAPE: ", test_csi_smape)
-print("R^2: ", test_csi_r2)
-
 # save results
 with open(f"results/point_results/transformer_{seq_len}.txt", 'w') as file:
-    file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -465,29 +393,15 @@ with open(f"results/point_results/transformer_{seq_len}.txt", 'w') as file:
     file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2) + "\n")
 
-    file.write("\nCSI-SPACE METRICS\n")
-    file.write("Training Error\n")
-    file.write("MAE: " + str(train_csi_mae) + "\n")
-    file.write("sMAPE: " + str(train_csi_smape) + "\n")
-    file.write("R^2: " + str(train_csi_r2) + "\n")
-
-    file.write("\nValidation Error\n")
-    file.write("MAE: " + str(valid_csi_mae) + "\n")
-    file.write("sMAPE: " + str(valid_csi_smape) + "\n")
-    file.write("R^2: " + str(valid_csi_r2) + "\n")
-
-    file.write("\nTesting Error\n")
-    file.write("MAE: " + str(test_csi_mae) + "\n")
-    file.write("sMAPE: " + str(test_csi_smape) + "\n")
-    file.write("R^2: " + str(test_csi_r2))
-
 # plot the results
 hours = np.arange(864) * (5/60) # 5 minutes to hours
-plt.plot(hours, test_true[:864], label="Actual")
-plt.plot(hours, test_pred_ghi[:864], label="Predicted")
-plt.title(f"Transformer ({seq_len} Rows) GHI Pred vs Actual")
+actual_energy = test_true.sum(axis=1) * (5/60)
+pred_energy = test_pred.sum(axis=1) * (5/60)
+plt.plot(hours, actual_energy[:864], label="Actual")
+plt.plot(hours, pred_energy[:864], label="Predicted")
+plt.title(f"Transformer ({seq_len} Rows) Hourly Energy Pred vs Actual")
 plt.legend()
-plt.ylabel("GHI")
+plt.ylabel("Energy (Wh/m\u00b2)")
 plt.xlabel("Hour")
 plt.savefig(f"results/point_results/transformer_{seq_len}.pdf")
 plt.show(block=False)

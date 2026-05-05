@@ -41,6 +41,40 @@ y_test_ghi = np.load(path + "y_test_ghi.npy")
 model = XGBRegressor(n_estimators=1000, eval_metric="rmse", objective="reg:pseudohubererror", early_stopping_rounds=100, eta=0.05)
 model.fit(x_train, y_train, sample_weight=train_weights, eval_set=[(x_train, y_train), (x_valid, y_valid)], sample_weight_eval_set=[train_weights, valid_weights], verbose=False)
 results = model.evals_result()
+
+# point importance
+# importances = model.feature_importances_
+
+# height = 7
+# width = 7
+# features = 27
+
+# cell_importance = np.zeros((height, width))
+
+# for i in range(height):
+#     for j in range(width):
+#         idx = (i * width + j) * features
+#         cell_importance[i, j] = importances[idx:idx+features].sum()
+
+# cell_importance /= cell_importance.sum()
+
+# plt.figure(figsize=(6, 5))
+# plt.imshow(cell_importance, cmap="viridis", origin="upper")
+# plt.colorbar(label="Relative Importance")
+# plt.title("XGBoost Feature Importance by Point")
+# plt.xlabel("Grid X")
+# plt.ylabel("Grid Y")
+
+# for i in range(height):
+#     for j in range(width):
+#         plt.text(j, i, f"{cell_importance[i,j]:.3f}",
+#                  ha="center", va="center", color="white")
+
+# plt.tight_layout()
+# plt.savefig("results/grid_results/xgboost_point_importance.pdf")
+# plt.show(block=False)
+# plt.close('all')
+
 epochs = len(results['validation_0']['rmse'])
 x_axis = range(0, epochs)
 

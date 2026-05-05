@@ -165,8 +165,12 @@ for x in range(1,8):
             future_cs_ghi_valid = future_cs_ghi_valid.astype(np.float32)
             future_cs_ghi_test = future_cs_ghi_test.astype(np.float32)
 
+# reorder to alphabetical
 all_columns = sorted(set().union(*[df.columns for df in all_x_train_raw]))
 
+# ['CSI', 'Cloud Type_0.0', 'Cloud Type_1.0', 'Cloud Type_11.0', 'Cloud Type_12.0', 'Cloud Type_2.0', 'Cloud Type_3.0', 'Cloud Type_4.0', 'Cloud Type_5.0', 'Cloud Type_6.0', 'Cloud Type_7.0', 'Cloud Type_8.0', 'Cloud Type_9.0', 'Cos_Hour', 'Cos_Month', 'DHI', 'DNI', 'DayOfYear_Cos', 'DayOfYear_Sin', 'GHI', 'Precipitable Water', 'Relative Humidity', 'SSA', 'Sin_Hour', 'Sin_Month', 'Wind Direction', 'Wind Speed']
+
+# sort in case of missing cloud type feature
 for i in range(49):
     all_x_train_raw[i] = all_x_train_raw[i].reindex(columns=all_columns, fill_value=0)
     all_x_valid_raw[i] = all_x_valid_raw[i].reindex(columns=all_columns, fill_value=0)
