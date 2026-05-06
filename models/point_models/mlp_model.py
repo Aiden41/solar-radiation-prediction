@@ -19,6 +19,8 @@ horizon = 12 # number of values to predict
 
 target = 'GHI' # GHI or CSI
 
+energy_metrics = True
+
 # read in data
 dataset = pd.read_csv('data/5min/row4/4/data.csv', dtype=np.float32)
 dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
@@ -259,18 +261,16 @@ if target == 'CSI':
     valid_pred = valid_pred * valid_csghi
     test_pred = test_pred * test_csghi
 
-sza_train = train_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
-sza_valid = valid_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
-sza_test = test_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
-
-train_mask = sza_train < 90
-valid_mask = sza_valid < 90
-test_mask = sza_test < 90
-
+# remove negative values
 test_pred = np.maximum(test_pred, 0)
 valid_pred = np.maximum(valid_pred, 0)
 train_pred = np.maximum(train_pred, 0)
 
+sza_train = train_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
+sza_valid = valid_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
+sza_test = test_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
+
+# zero out nighttime predictions
 train_pred[sza_train >= 90] = 0
 valid_pred[sza_valid >= 90] = 0
 test_pred[sza_test >= 90] = 0
@@ -279,171 +279,138 @@ train_true = train_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy
 valid_true = valid_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
 test_true = test_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
 
-# mask real values to daytime only
-train_true_day = train_true[train_mask]
-valid_true_day = valid_true[valid_mask]
-test_true_day = test_true[test_mask]
-
-# mask predictions to daytime only
-train_pred_day = train_pred[train_mask]
-valid_pred_day = valid_pred[valid_mask]
-test_pred_day = test_pred[test_mask]
-
-# MSE
-train_mse = mean_squared_error(train_true_day, train_pred_day)
-valid_mse = mean_squared_error(valid_true_day, valid_pred_day)
-test_mse = mean_squared_error(test_true_day, test_pred_day)
-
-# RMSE
-train_rmse = np.sqrt(train_mse)
-valid_rmse = np.sqrt(valid_mse)
-test_rmse = np.sqrt(test_mse)
-
-train_average_GHI = np.mean(train_true_day)
-valid_average_GHI = np.mean(valid_true_day)
-test_average_GHI = np.mean(test_true_day)
-
-# NRMSE (normalize by daytime mean GHI)
-train_nrmse = train_rmse / train_average_GHI
-valid_nrmse = valid_rmse / valid_average_GHI
-test_nrmse = test_rmse / test_average_GHI
-
-# MAE
-train_mae = mean_absolute_error(train_true_day, train_pred_day)
-valid_mae = mean_absolute_error(valid_true_day, valid_pred_day)
-test_mae = mean_absolute_error(test_true_day, test_pred_day)
-
-# MBE
 def mbe(y_true, y_pred):
     return np.mean(y_pred - y_true)
 
-train_mbe = mbe(train_true_day, train_pred_day)
-valid_mbe = mbe(valid_true_day, valid_pred_day)
-test_mbe = mbe(test_true_day, test_pred_day)
-
-# sMAPE
 def smape(y_true, y_pred):
     den = (np.abs(y_true) + np.abs(y_pred)) / 2.0
     mask = den > 1e-6
     return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
 
-train_smape = smape(train_true_day, train_pred_day)
-valid_smape = smape(valid_true_day, valid_pred_day)
-test_smape = smape(test_true_day, test_pred_day)
+rmse_all = np.zeros((horizon, 3))
+nrmse_all = np.zeros((horizon, 3))
+mae_all = np.zeros((horizon, 3))
+mbe_all = np.zeros((horizon, 3))
+smape_all = np.zeros((horizon, 3))
+r2_all = np.zeros((horizon, 3))
 
-# R^2
-train_r2 = r2_score(train_true_day, train_pred_day)
-valid_r2 = r2_score(valid_true_day, valid_pred_day)
-test_r2 = r2_score(test_true_day, test_pred_day)
+# loop ends with target! that's how printing and saving metrics work!
+for h_idx in range(horizon):
+    train_true_h = train_true[:, h_idx]
+    valid_true_h = valid_true[:, h_idx]
+    test_true_h = test_true[:, h_idx]
 
-# print results
-print("GHI METRICS")
-print("Training Error")
-print("MSE:", train_mse)
-print("RMSE:", train_rmse)
-print("NRMSE:", train_nrmse)
-print("MAE:", train_mae)
-print("MBE:", train_mbe)
-print("sMAPE:", train_smape)
-print("R^2:", train_r2)
+    train_pred_h = train_pred[:, h_idx]
+    valid_pred_h = valid_pred[:, h_idx]
+    test_pred_h = test_pred[:, h_idx]
 
-print("\nValidation Error")
-print("MSE:", valid_mse)
-print("RMSE:", valid_rmse)
-print("NRMSE:", valid_nrmse)
-print("MAE:", valid_mae)
-print("MBE:", valid_mbe)
-print("sMAPE:", valid_smape)
-print("R^2:", valid_r2)
+    sza_train_h = sza_train[:, h_idx]
+    sza_valid_h = sza_valid[:, h_idx]
+    sza_test_h = sza_test[:, h_idx]
 
-print("\nTesting Error")
-print("MSE:", test_mse)
-print("RMSE:", test_rmse)
-print("NRMSE:", test_nrmse)
-print("MAE:", test_mae)
-print("MBE:", test_mbe)
-print("sMAPE:", test_smape)
-print("R^2:", test_r2)
+    train_mask = sza_train_h < 90
+    valid_mask = sza_valid_h < 90
+    test_mask = sza_test_h < 90
 
-train_actual_energy = train_true.sum(axis=1) * (5/60)
-train_pred_energy = train_pred.sum(axis=1) * (5/60)
+    # mask real values to daytime only
+    train_true_day = train_true_h[train_mask]
+    valid_true_day = valid_true_h[valid_mask]
+    test_true_day = test_true_h[test_mask]
 
-valid_actual_energy = valid_true.sum(axis=1) * (5/60)
-valid_pred_energy = valid_pred.sum(axis=1) * (5/60)
+    # mask predictions to daytime only
+    train_pred_day = train_pred_h[train_mask]
+    valid_pred_day = valid_pred_h[valid_mask]
+    test_pred_day = test_pred_h[test_mask]
 
-test_actual_energy = test_true.sum(axis=1) * (5/60)
-test_pred_energy = test_pred.sum(axis=1) * (5/60)
+    train_mse = mean_squared_error(train_true_day, train_pred_day)
+    valid_mse = mean_squared_error(valid_true_day, valid_pred_day)
+    test_mse = mean_squared_error(test_true_day, test_pred_day)
 
-train_energy_mask = (sza_train < 90).any(axis=1)
-valid_energy_mask = (sza_valid < 90).any(axis=1)
-test_energy_mask = (sza_test < 90).any(axis=1)
+    train_rmse = np.sqrt(train_mse)
+    valid_rmse = np.sqrt(valid_mse)
+    test_rmse = np.sqrt(test_mse)
+    rmse_all[h_idx, :] = [train_rmse, valid_rmse, test_rmse]
 
-train_actual_energy_day = train_actual_energy[train_energy_mask]
-train_pred_energy_day = train_pred_energy[train_energy_mask]
+    train_average_GHI = np.mean(train_true_day)
+    valid_average_GHI = np.mean(valid_true_day)
+    test_average_GHI = np.mean(test_true_day)
 
-valid_actual_energy_day = valid_actual_energy[valid_energy_mask]
-valid_pred_energy_day = valid_pred_energy[valid_energy_mask]
+    train_nrmse = train_rmse / train_average_GHI
+    valid_nrmse = valid_rmse / valid_average_GHI
+    test_nrmse = test_rmse / test_average_GHI
+    nrmse_all[h_idx, :] = [train_nrmse, valid_nrmse, test_nrmse]
 
-test_actual_energy_day = test_actual_energy[test_energy_mask]
-test_pred_energy_day = test_pred_energy[test_energy_mask]
+    train_mae = mean_absolute_error(train_true_day, train_pred_day)
+    valid_mae = mean_absolute_error(valid_true_day, valid_pred_day)
+    test_mae = mean_absolute_error(test_true_day, test_pred_day)
+    mae_all[h_idx, :] = [train_mae, valid_mae, test_mae]
 
-train_energy_mse = mean_squared_error(train_actual_energy_day, train_pred_energy_day)
-train_energy_rmse = np.sqrt(train_energy_mse)
-train_energy_nrmse = train_energy_rmse / np.mean(train_actual_energy_day)
-train_energy_mae = mean_absolute_error(train_actual_energy_day, train_pred_energy_day)
-train_energy_mbe = np.mean(train_pred_energy_day - train_actual_energy_day)
-train_energy_smape = smape(train_actual_energy_day, train_pred_energy_day)
-train_energy_r2 = r2_score(train_actual_energy_day, train_pred_energy_day)
+    train_mbe = mbe(train_true_day, train_pred_day)
+    valid_mbe = mbe(valid_true_day, valid_pred_day)
+    test_mbe = mbe(test_true_day, test_pred_day)
+    mbe_all[h_idx, :] = [train_mbe, valid_mbe, test_mbe]
 
-valid_energy_mse = mean_squared_error(valid_actual_energy_day, valid_pred_energy_day)
-valid_energy_rmse = np.sqrt(valid_energy_mse)
-valid_energy_nrmse = valid_energy_rmse / np.mean(valid_actual_energy_day)
-valid_energy_mae = mean_absolute_error(valid_actual_energy_day, valid_pred_energy_day)
-valid_energy_mbe = np.mean(valid_pred_energy_day - valid_actual_energy_day)
-valid_energy_smape = smape(valid_actual_energy_day, valid_pred_energy_day)
-valid_energy_r2 = r2_score(valid_actual_energy_day, valid_pred_energy_day)
+    train_smape = smape(train_true_day, train_pred_day)
+    valid_smape = smape(valid_true_day, valid_pred_day)
+    test_smape = smape(test_true_day, test_pred_day)
+    smape_all[h_idx, :] = [train_smape, valid_smape, test_smape]
 
-test_energy_mse = mean_squared_error(test_actual_energy_day, test_pred_energy_day)
-test_energy_rmse = np.sqrt(test_energy_mse)
-test_energy_nrmse = test_energy_rmse / np.mean(test_actual_energy_day)
-test_energy_mae = mean_absolute_error(test_actual_energy_day, test_pred_energy_day)
-test_energy_mbe = np.mean(test_pred_energy_day - test_actual_energy_day)
-test_energy_smape = smape(test_actual_energy_day, test_pred_energy_day)
-test_energy_r2 = r2_score(test_actual_energy_day, test_pred_energy_day)
+    train_r2 = r2_score(train_true_day, train_pred_day)
+    valid_r2 = r2_score(valid_true_day, valid_pred_day)
+    test_r2 = r2_score(test_true_day, test_pred_day)
+    r2_all[h_idx, :] = [train_r2, valid_r2, test_r2]
 
-print("\nENERGY METRICS")
-print("Training Error")
-print("MSE:", train_energy_mse)
-print("RMSE:", train_energy_rmse)
-print("NRMSE:", train_energy_nrmse)
-print("MAE:", train_energy_mae)
-print("MBE:", train_energy_mbe)
-print("sMAPE:", train_energy_smape)
-print("R^2:", train_energy_r2)
+if energy_metrics:
+    train_actual_energy = train_true.sum(axis=1) * (5/60)
+    train_pred_energy = train_pred.sum(axis=1) * (5/60)
 
-print("\nValidation Error")
-print("MSE:", valid_energy_mse)
-print("RMSE:", valid_energy_rmse)
-print("NRMSE:", valid_energy_nrmse)
-print("MAE:", valid_energy_mae)
-print("MBE:", valid_energy_mbe)
-print("sMAPE:", valid_energy_smape)
-print("R^2:", valid_energy_r2)
+    valid_actual_energy = valid_true.sum(axis=1) * (5/60)
+    valid_pred_energy = valid_pred.sum(axis=1) * (5/60)
 
-print("\nTesting Error")
-print("MSE:", test_energy_mse)
-print("RMSE:", test_energy_rmse)
-print("NRMSE:", test_energy_nrmse)
-print("MAE:", test_energy_mae)
-print("MBE:", test_energy_mbe)
-print("sMAPE:", test_energy_smape)
-print("R^2:", test_energy_r2)
+    test_actual_energy = test_true.sum(axis=1) * (5/60)
+    test_pred_energy = test_pred.sum(axis=1) * (5/60)
+
+    train_energy_mask = (sza_train < 90).any(axis=1)
+    valid_energy_mask = (sza_valid < 90).any(axis=1)
+    test_energy_mask = (sza_test < 90).any(axis=1)
+
+    train_actual_energy_day = train_actual_energy[train_energy_mask]
+    train_pred_energy_day = train_pred_energy[train_energy_mask]
+
+    valid_actual_energy_day = valid_actual_energy[valid_energy_mask]
+    valid_pred_energy_day = valid_pred_energy[valid_energy_mask]
+
+    test_actual_energy_day = test_actual_energy[test_energy_mask]
+    test_pred_energy_day = test_pred_energy[test_energy_mask]
+
+    train_energy_mse = mean_squared_error(train_actual_energy_day, train_pred_energy_day)
+    train_energy_rmse = np.sqrt(train_energy_mse)
+    train_energy_nrmse = train_energy_rmse / np.mean(train_actual_energy_day)
+    train_energy_mae = mean_absolute_error(train_actual_energy_day, train_pred_energy_day)
+    train_energy_mbe = np.mean(train_pred_energy_day - train_actual_energy_day)
+    train_energy_smape = smape(train_actual_energy_day, train_pred_energy_day)
+    train_energy_r2 = r2_score(train_actual_energy_day, train_pred_energy_day)
+
+    valid_energy_mse = mean_squared_error(valid_actual_energy_day, valid_pred_energy_day)
+    valid_energy_rmse = np.sqrt(valid_energy_mse)
+    valid_energy_nrmse = valid_energy_rmse / np.mean(valid_actual_energy_day)
+    valid_energy_mae = mean_absolute_error(valid_actual_energy_day, valid_pred_energy_day)
+    valid_energy_mbe = np.mean(valid_pred_energy_day - valid_actual_energy_day)
+    valid_energy_smape = smape(valid_actual_energy_day, valid_pred_energy_day)
+    valid_energy_r2 = r2_score(valid_actual_energy_day, valid_pred_energy_day)
+
+    test_energy_mse = mean_squared_error(test_actual_energy_day, test_pred_energy_day)
+    test_energy_rmse = np.sqrt(test_energy_mse)
+    test_energy_nrmse = test_energy_rmse / np.mean(test_actual_energy_day)
+    test_energy_mae = mean_absolute_error(test_actual_energy_day, test_pred_energy_day)
+    test_energy_mbe = np.mean(test_pred_energy_day - test_actual_energy_day)
+    test_energy_smape = smape(test_actual_energy_day, test_pred_energy_day)
+    test_energy_r2 = r2_score(test_actual_energy_day, test_pred_energy_day)
 
 # save results
 with open(f"results/point_results/mlp_{target.lower()}.txt", 'w') as file:
     file.write("GHI METRICS\n")
     file.write("Training Error\n")
-    file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
     file.write("NRMSE: " + str(train_nrmse) + "\n")
     file.write("MAE: " + str(train_mae) + "\n")
@@ -452,7 +419,6 @@ with open(f"results/point_results/mlp_{target.lower()}.txt", 'w') as file:
     file.write("R^2: " + str(train_r2) + "\n")
 
     file.write("\nValidation Error\n")
-    file.write("MSE: " + str(valid_mse) + "\n")
     file.write("RMSE: " + str(valid_rmse) + "\n")
     file.write("NRMSE: " + str(valid_nrmse) + "\n")
     file.write("MAE: " + str(valid_mae) + "\n")
@@ -461,7 +427,6 @@ with open(f"results/point_results/mlp_{target.lower()}.txt", 'w') as file:
     file.write("R^2: " + str(valid_r2) + "\n")
 
     file.write("\nTesting Error\n")
-    file.write("MSE: " + str(test_mse) + "\n")
     file.write("RMSE: " + str(test_rmse) + "\n")
     file.write("NRMSE: " + str(test_nrmse) + "\n")
     file.write("MAE: " + str(test_mae) + "\n")
@@ -469,41 +434,102 @@ with open(f"results/point_results/mlp_{target.lower()}.txt", 'w') as file:
     file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2) + "\n")
 
-    file.write("\nENERGY METRICS\n")
-    file.write("Training Error\n")
-    file.write("MSE: " + str(train_energy_mse) + "\n")
-    file.write("RMSE: " + str(train_energy_rmse) + "\n")
-    file.write("NRMSE: " + str(train_energy_nrmse) + "\n")
-    file.write("MAE: " + str(train_energy_mae) + "\n")
-    file.write("MBE: " + str(train_energy_mbe) + "\n")
-    file.write("sMAPE: " + str(train_energy_smape) + "\n")
-    file.write("R^2: " + str(train_energy_r2) + "\n")
+    if energy_metrics:
+        file.write("\nENERGY METRICS\n")
+        file.write("Training Error\n")
+        file.write("RMSE: " + str(train_energy_rmse) + "\n")
+        file.write("NRMSE: " + str(train_energy_nrmse) + "\n")
+        file.write("MAE: " + str(train_energy_mae) + "\n")
+        file.write("MBE: " + str(train_energy_mbe) + "\n")
+        file.write("sMAPE: " + str(train_energy_smape) + "\n")
+        file.write("R^2: " + str(train_energy_r2) + "\n")
 
-    file.write("\nValidation Error\n")
-    file.write("MSE: " + str(valid_energy_mse) + "\n")
-    file.write("RMSE: " + str(valid_energy_rmse) + "\n")
-    file.write("NRMSE: " + str(valid_energy_nrmse) + "\n")
-    file.write("MAE: " + str(valid_energy_mae) + "\n")
-    file.write("MBE: " + str(valid_energy_mbe) + "\n")
-    file.write("sMAPE: " + str(valid_energy_smape) + "\n")
-    file.write("R^2: " + str(valid_energy_r2) + "\n")
+        file.write("\nValidation Error\n")
+        file.write("RMSE: " + str(valid_energy_rmse) + "\n")
+        file.write("NRMSE: " + str(valid_energy_nrmse) + "\n")
+        file.write("MAE: " + str(valid_energy_mae) + "\n")
+        file.write("MBE: " + str(valid_energy_mbe) + "\n")
+        file.write("sMAPE: " + str(valid_energy_smape) + "\n")
+        file.write("R^2: " + str(valid_energy_r2) + "\n")
 
-    file.write("\nTesting Error\n")
-    file.write("MSE: " + str(test_energy_mse) + "\n")
-    file.write("RMSE: " + str(test_energy_rmse) + "\n")
-    file.write("NRMSE: " + str(test_energy_nrmse) + "\n")
-    file.write("MAE: " + str(test_energy_mae) + "\n")
-    file.write("MBE: " + str(test_energy_mbe) + "\n")
-    file.write("sMAPE: " + str(test_energy_smape) + "\n")
-    file.write("R^2: " + str(test_energy_r2) + "\n")
+        file.write("\nTesting Error\n")
+        file.write("RMSE: " + str(test_energy_rmse) + "\n")
+        file.write("NRMSE: " + str(test_energy_nrmse) + "\n")
+        file.write("MAE: " + str(test_energy_mae) + "\n")
+        file.write("MBE: " + str(test_energy_mbe) + "\n")
+        file.write("sMAPE: " + str(test_energy_smape) + "\n")
+        file.write("R^2: " + str(test_energy_r2) + "\n")
+
+# print results
+print("GHI METRICS")
+print("Training Error")
+print("RMSE:", train_rmse)
+print("NRMSE:", train_nrmse)
+print("MAE:", train_mae)
+print("MBE:", train_mbe)
+print("sMAPE:", train_smape)
+print("R^2:", train_r2)
+
+print("\nValidation Error")
+print("RMSE:", valid_rmse)
+print("NRMSE:", valid_nrmse)
+print("MAE:", valid_mae)
+print("MBE:", valid_mbe)
+print("sMAPE:", valid_smape)
+print("R^2:", valid_r2)
+
+print("\nTesting Error")
+print("RMSE:", test_rmse)
+print("NRMSE:", test_nrmse)
+print("MAE:", test_mae)
+print("MBE:", test_mbe)
+print("sMAPE:", test_smape)
+print("R^2:", test_r2)
 
 # plot the results
 hours = np.arange(864) * (5/60) # 5 minutes to hours
-plt.plot(hours, test_actual_energy[:864], label="Actual")
-plt.plot(hours, test_pred_energy[:864], label="Predicted")
-plt.title("MLP Hourly Energy Pred vs Actual")
+plt.plot(hours, test_true_h[:864], label="Actual")
+plt.plot(hours, test_pred_h[:864], label="Predicted")
+plt.title("MLP GHI Pred vs Actual")
 plt.legend()
-plt.ylabel("Energy (Wh/m\u00b2)")
+plt.ylabel("GHI")
 plt.xlabel("Hour")
 plt.savefig(f"results/point_results/mlp_{target.lower()}.pdf")
 plt.show(block=False)
+plt.close('all')
+
+if energy_metrics:
+    print("\nENERGY METRICS")
+    print("Training Error")
+    print("RMSE:", train_energy_rmse)
+    print("NRMSE:", train_energy_nrmse)
+    print("MAE:", train_energy_mae)
+    print("MBE:", train_energy_mbe)
+    print("sMAPE:", train_energy_smape)
+    print("R^2:", train_energy_r2)
+
+    print("\nValidation Error")
+    print("RMSE:", valid_energy_rmse)
+    print("NRMSE:", valid_energy_nrmse)
+    print("MAE:", valid_energy_mae)
+    print("MBE:", valid_energy_mbe)
+    print("sMAPE:", valid_energy_smape)
+    print("R^2:", valid_energy_r2)
+
+    print("\nTesting Error")
+    print("RMSE:", test_energy_rmse)
+    print("NRMSE:", test_energy_nrmse)
+    print("MAE:", test_energy_mae)
+    print("MBE:", test_energy_mbe)
+    print("sMAPE:", test_energy_smape)
+    print("R^2:", test_energy_r2)
+
+    hours = np.arange(864) * (5/60) # 5 minutes to hours
+    plt.plot(hours, test_actual_energy[:864], label="Actual")
+    plt.plot(hours, test_pred_energy[:864], label="Predicted")
+    plt.title("MLP Energy Pred vs Actual")
+    plt.legend()
+    plt.ylabel("Energy (Wh/m\u00b2)")
+    plt.xlabel("Hour")
+    plt.savefig(f"results/point_results/mlp_{target.lower()}_energy.pdf")
+    plt.show(block=False)
