@@ -225,15 +225,6 @@ for id_batch, (x_batch, y_batch) in enumerate(test_dataset):
     
     test_preds.append(pred)
 
-def smape(y_true, y_pred):
-    y_true = np.asarray(y_true).flatten()
-    y_pred = np.asarray(y_pred).flatten()
-
-    den = (np.abs(y_true) + np.abs(y_pred)) / 2.0
-    mask = den > 1e-6
-
-    return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
-
 train_mse = train_se / train_count
 valid_mse = valid_se / valid_count
 test_mse = test_se / test_count
@@ -249,10 +240,6 @@ test_mae = test_ae / test_count
 train_mbe = train_bias_sum / train_count
 valid_mbe = valid_bias_sum / valid_count
 test_mbe = test_bias_sum / test_count
-
-train_smape = smape(train_targets, train_preds_day)
-valid_smape = smape(valid_targets, valid_preds_day)
-test_smape = smape(test_targets, test_preds_day)
 
 train_targets = np.asarray(train_targets)
 train_preds_day = np.asarray(train_preds_day)
@@ -283,7 +270,6 @@ print("RMSE:", train_rmse)
 print("NRMSE:", train_nrmse)
 print("MAE:", train_mae)
 print("MBE:", train_mbe)
-print("sMAPE:", train_smape)
 print("R^2:", train_r2)
 
 print("\nValidation Error")
@@ -292,7 +278,6 @@ print("RMSE:", valid_rmse)
 print("NRMSE:", valid_nrmse)
 print("MAE:", valid_mae)
 print("MBE:", valid_mbe)
-print("sMAPE:", valid_smape)
 print("R^2:", valid_r2)
 
 print("\nTesting Error")
@@ -301,7 +286,6 @@ print("RMSE:", test_rmse)
 print("NRMSE:", test_nrmse)
 print("MAE:", test_mae)
 print("MBE:", test_mbe)
-print("sMAPE:", test_smape)
 print("R^2:", test_r2)
 
 # save results
@@ -313,7 +297,6 @@ with open("results/baseline_results/daytime_avg.txt", 'w') as file:
     file.write("NRMSE: " + str(train_nrmse) + "\n")
     file.write("MAE: " + str(train_mae) + "\n")
     file.write("MBE: " + str(train_mbe) + "\n")
-    file.write("sMAPE: " + str(train_smape) + "\n")
     file.write("R^2: " + str(train_r2) + "\n")
 
     file.write("\nValidation Error\n")
@@ -322,7 +305,6 @@ with open("results/baseline_results/daytime_avg.txt", 'w') as file:
     file.write("NRMSE: " + str(valid_nrmse) + "\n")
     file.write("MAE: " + str(valid_mae) + "\n")
     file.write("MBE: " + str(valid_mbe) + "\n")
-    file.write("sMAPE: " + str(valid_smape) + "\n")
     file.write("R^2: " + str(valid_r2) + "\n")
 
     file.write("\nTesting Error\n")
@@ -331,7 +313,6 @@ with open("results/baseline_results/daytime_avg.txt", 'w') as file:
     file.write("NRMSE: " + str(test_nrmse) + "\n")
     file.write("MAE: " + str(test_mae) + "\n")
     file.write("MBE: " + str(test_mbe) + "\n")
-    file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2) + "\n")
 
 # plot the results

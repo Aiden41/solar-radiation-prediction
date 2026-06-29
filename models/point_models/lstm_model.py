@@ -15,8 +15,10 @@ batch_size = 1024
 early_stopping = True
 patience = 8
 
+# to only predict 12th timestamp, flip these
 offset = 1 # number of rows ahead to predict
 horizon = 12 # number of values to predict
+
 seq_len = 12 # number of rows
 
 target = 'CSI' # GHI or CSI
@@ -160,20 +162,23 @@ class LSTM(nn.Module):
             batch_first=True,
             dropout=dropout
         )
+        self.norm = nn.LayerNorm(hidden_dim)
         self.fc = nn.Linear(hidden_dim, horizon)
+        self.bias = nn.Parameter(torch.zeros(horizon))
 
     def forward(self, x):
-        out, _ = self.lstm(x)
-        out = out[:, -1, :]
-        return self.fc(out)
+        h, _ = self.lstm(x)
+        h = h[:, -1, :]
+        h = self.norm(h)
+        return self.fc(h) + self.bias
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LSTM(input_dim=x_train.shape[1], hidden_dim=256, num_layers=2, dropout=0.1).to(device)
 
 # set other various parameters
-criterion = nn.SmoothL1Loss(beta=0.1)
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=3e-4)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-5)
+criterion = nn.MSELoss()
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
 
 train_ds = SolarDataset(data=x_train, targets=y_train, seq_len=seq_len, device=device, flatten=False)
 valid_ds = SolarDataset(data=x_valid, targets=y_valid, seq_len=seq_len, device=device, flatten=False)
@@ -198,6 +203,7 @@ for epoch in range(1, num_epochs+1):
         preds = model(xb)
         loss = criterion(preds, yb)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         train_epoch_loss += loss.item() * xb.size(0)
 
@@ -257,42 +263,46 @@ train_idx = train_ds.valid
 valid_idx = valid_ds.valid
 test_idx = test_ds.valid
 
+sza_train = train_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
+sza_valid = valid_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
+sza_test = test_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
+
+train_true = train_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[train_idx]
+valid_true = valid_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[valid_idx]
+test_true = test_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[test_idx]
+
 if target == 'CSI':
     train_pred = train_pred * train_csghi[train_idx]
     valid_pred = valid_pred * valid_csghi[valid_idx]
     test_pred = test_pred * test_csghi[test_idx]
+
+valid_mask = (sza_valid[valid_idx] < 90).any(axis=1)
+valid_true_day = valid_true[valid_mask]
+valid_pred_day = valid_pred[valid_mask]
+
+# bias correction
+delta = np.mean(valid_pred_day - valid_true_day)
+train_pred = train_pred - delta
+valid_pred = valid_pred - delta
+test_pred = test_pred - delta
 
 # remove negative values
 test_pred = np.maximum(test_pred, 0)
 valid_pred = np.maximum(valid_pred, 0)
 train_pred = np.maximum(train_pred, 0)
 
-sza_train = train_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
-sza_valid = valid_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
-sza_test = test_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
-
 # zero out nighttime predictions
 train_pred[sza_train[train_idx] >= 90] = 0
 valid_pred[sza_valid[valid_idx] >= 90] = 0
 test_pred[sza_test[test_idx] >= 90] = 0
 
-train_true = train_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[train_idx]
-valid_true = valid_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[valid_idx]
-test_true = test_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[test_idx]
-
 def mbe(y_true, y_pred):
     return np.mean(y_pred - y_true)
-
-def smape(y_true, y_pred):
-    den = (np.abs(y_true) + np.abs(y_pred)) / 2.0
-    mask = den > 1e-6
-    return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
 
 rmse_all = np.zeros((horizon, 3))
 nrmse_all = np.zeros((horizon, 3))
 mae_all = np.zeros((horizon, 3))
 mbe_all = np.zeros((horizon, 3))
-smape_all = np.zeros((horizon, 3))
 r2_all = np.zeros((horizon, 3))
 
 # loop ends with target! that's how printing and saving metrics work!
@@ -351,11 +361,6 @@ for h_idx in range(horizon):
     test_mbe = mbe(test_true_day, test_pred_day)
     mbe_all[h_idx, :] = [train_mbe, valid_mbe, test_mbe]
 
-    train_smape = smape(train_true_day, train_pred_day)
-    valid_smape = smape(valid_true_day, valid_pred_day)
-    test_smape = smape(test_true_day, test_pred_day)
-    smape_all[h_idx, :] = [train_smape, valid_smape, test_smape]
-
     train_r2 = r2_score(train_true_day, train_pred_day)
     valid_r2 = r2_score(valid_true_day, valid_pred_day)
     test_r2 = r2_score(test_true_day, test_pred_day)
@@ -389,7 +394,6 @@ if energy_metrics:
     train_energy_nrmse = train_energy_rmse / np.mean(train_actual_energy_day)
     train_energy_mae = mean_absolute_error(train_actual_energy_day, train_pred_energy_day)
     train_energy_mbe = np.mean(train_pred_energy_day - train_actual_energy_day)
-    train_energy_smape = smape(train_actual_energy_day, train_pred_energy_day)
     train_energy_r2 = r2_score(train_actual_energy_day, train_pred_energy_day)
 
     valid_energy_mse = mean_squared_error(valid_actual_energy_day, valid_pred_energy_day)
@@ -397,7 +401,6 @@ if energy_metrics:
     valid_energy_nrmse = valid_energy_rmse / np.mean(valid_actual_energy_day)
     valid_energy_mae = mean_absolute_error(valid_actual_energy_day, valid_pred_energy_day)
     valid_energy_mbe = np.mean(valid_pred_energy_day - valid_actual_energy_day)
-    valid_energy_smape = smape(valid_actual_energy_day, valid_pred_energy_day)
     valid_energy_r2 = r2_score(valid_actual_energy_day, valid_pred_energy_day)
 
     test_energy_mse = mean_squared_error(test_actual_energy_day, test_pred_energy_day)
@@ -405,7 +408,6 @@ if energy_metrics:
     test_energy_nrmse = test_energy_rmse / np.mean(test_actual_energy_day)
     test_energy_mae = mean_absolute_error(test_actual_energy_day, test_pred_energy_day)
     test_energy_mbe = np.mean(test_pred_energy_day - test_actual_energy_day)
-    test_energy_smape = smape(test_actual_energy_day, test_pred_energy_day)
     test_energy_r2 = r2_score(test_actual_energy_day, test_pred_energy_day)
 
 # save results
@@ -416,7 +418,6 @@ with open(f"results/point_results/lstm_{target.lower()}_{seq_len}.txt", 'w') as 
     file.write("NRMSE: " + str(train_nrmse) + "\n")
     file.write("MAE: " + str(train_mae) + "\n")
     file.write("MBE: " + str(train_mbe) + "\n")
-    file.write("sMAPE: " + str(train_smape) + "\n")
     file.write("R^2: " + str(train_r2) + "\n")
 
     file.write("\nValidation Error\n")
@@ -424,7 +425,6 @@ with open(f"results/point_results/lstm_{target.lower()}_{seq_len}.txt", 'w') as 
     file.write("NRMSE: " + str(valid_nrmse) + "\n")
     file.write("MAE: " + str(valid_mae) + "\n")
     file.write("MBE: " + str(valid_mbe) + "\n")
-    file.write("sMAPE: " + str(valid_smape) + "\n")
     file.write("R^2: " + str(valid_r2) + "\n")
 
     file.write("\nTesting Error\n")
@@ -432,7 +432,6 @@ with open(f"results/point_results/lstm_{target.lower()}_{seq_len}.txt", 'w') as 
     file.write("NRMSE: " + str(test_nrmse) + "\n")
     file.write("MAE: " + str(test_mae) + "\n")
     file.write("MBE: " + str(test_mbe) + "\n")
-    file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2) + "\n")
 
     if energy_metrics:
@@ -442,7 +441,6 @@ with open(f"results/point_results/lstm_{target.lower()}_{seq_len}.txt", 'w') as 
         file.write("NRMSE: " + str(train_energy_nrmse) + "\n")
         file.write("MAE: " + str(train_energy_mae) + "\n")
         file.write("MBE: " + str(train_energy_mbe) + "\n")
-        file.write("sMAPE: " + str(train_energy_smape) + "\n")
         file.write("R^2: " + str(train_energy_r2) + "\n")
 
         file.write("\nValidation Error\n")
@@ -450,7 +448,6 @@ with open(f"results/point_results/lstm_{target.lower()}_{seq_len}.txt", 'w') as 
         file.write("NRMSE: " + str(valid_energy_nrmse) + "\n")
         file.write("MAE: " + str(valid_energy_mae) + "\n")
         file.write("MBE: " + str(valid_energy_mbe) + "\n")
-        file.write("sMAPE: " + str(valid_energy_smape) + "\n")
         file.write("R^2: " + str(valid_energy_r2) + "\n")
 
         file.write("\nTesting Error\n")
@@ -458,7 +455,6 @@ with open(f"results/point_results/lstm_{target.lower()}_{seq_len}.txt", 'w') as 
         file.write("NRMSE: " + str(test_energy_nrmse) + "\n")
         file.write("MAE: " + str(test_energy_mae) + "\n")
         file.write("MBE: " + str(test_energy_mbe) + "\n")
-        file.write("sMAPE: " + str(test_energy_smape) + "\n")
         file.write("R^2: " + str(test_energy_r2) + "\n")
 
 # print results
@@ -468,7 +464,6 @@ print("RMSE:", train_rmse)
 print("NRMSE:", train_nrmse)
 print("MAE:", train_mae)
 print("MBE:", train_mbe)
-print("sMAPE:", train_smape)
 print("R^2:", train_r2)
 
 print("\nValidation Error")
@@ -476,7 +471,6 @@ print("RMSE:", valid_rmse)
 print("NRMSE:", valid_nrmse)
 print("MAE:", valid_mae)
 print("MBE:", valid_mbe)
-print("sMAPE:", valid_smape)
 print("R^2:", valid_r2)
 
 print("\nTesting Error")
@@ -484,7 +478,6 @@ print("RMSE:", test_rmse)
 print("NRMSE:", test_nrmse)
 print("MAE:", test_mae)
 print("MBE:", test_mbe)
-print("sMAPE:", test_smape)
 print("R^2:", test_r2)
 
 # plot the results
@@ -506,7 +499,6 @@ if energy_metrics:
     print("NRMSE:", train_energy_nrmse)
     print("MAE:", train_energy_mae)
     print("MBE:", train_energy_mbe)
-    print("sMAPE:", train_energy_smape)
     print("R^2:", train_energy_r2)
 
     print("\nValidation Error")
@@ -514,7 +506,6 @@ if energy_metrics:
     print("NRMSE:", valid_energy_nrmse)
     print("MAE:", valid_energy_mae)
     print("MBE:", valid_energy_mbe)
-    print("sMAPE:", valid_energy_smape)
     print("R^2:", valid_energy_r2)
 
     print("\nTesting Error")
@@ -522,7 +513,6 @@ if energy_metrics:
     print("NRMSE:", test_energy_nrmse)
     print("MAE:", test_energy_mae)
     print("MBE:", test_energy_mbe)
-    print("sMAPE:", test_energy_smape)
     print("R^2:", test_energy_r2)
 
     hours = np.arange(864) * (5/60) # 5 minutes to hours
