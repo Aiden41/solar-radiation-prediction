@@ -6,19 +6,14 @@ from torch import nn
 from torch.utils.data import DataLoader
 from solar_dataset import SolarDataset
 
-lagged = True
 num_epochs = 100
 batch_size = 1024
+seq_len = 12
 
 early_stopping = True
 patience = 8
 
-seq_len = None
 path = "saves/preprocessed/"
-if lagged:
-    seq_len = 12
-else:
-    seq_len = 1
 
 x_train = np.load(path + "train_grid.npy")
 x_valid = np.load(path + "valid_grid.npy")
@@ -45,41 +40,82 @@ y_train_ghi = np.load(path + "y_train_ghi.npy")
 y_valid_ghi = np.load(path + "y_valid_ghi.npy")
 y_test_ghi = np.load(path + "y_test_ghi.npy")
 
-class MLP(nn.Module):
-    def __init__(self, input_dim):
+class ConvGRUCell(nn.Module):
+    def __init__(self, input_dim, hidden_dim, kernel_size):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, 2048),
-            nn.ReLU(),
-            nn.Dropout(0.1),
+        padding = kernel_size // 2
+        self.hidden_dim = hidden_dim
 
-            nn.Linear(2048, 1024),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-
-            nn.Linear(1024, 512),
-            nn.ReLU(),
+        self.conv = nn.Conv2d(
+            in_channels=input_dim + hidden_dim,
+            out_channels=3 * hidden_dim,
+            kernel_size=kernel_size,
+            padding=padding
         )
 
-        self.norm = nn.LayerNorm(512)
-        self.fc = nn.Linear(512, 1)
+        self.layer_norm = nn.LayerNorm([3*hidden_dim, 7, 7])
+        self.bias_gates = nn.Parameter(torch.zeros(3*hidden_dim))
+
+    def forward(self, x, h):
+        combined = torch.cat([x, h], dim=1)
+        gates = self.layer_norm(self.conv(combined) + self.bias_gates.view(1, -1, 1, 1))
+        r, z, n = gates.chunk(3, dim=1)
+
+        r = torch.sigmoid(r)
+        z = torch.sigmoid(z)
+        n = torch.tanh(n)
+
+        h_next = (1-z) * h + z * n
+        return h_next
+
+class ConvGRU(nn.Module):
+    def __init__(self, input_dim, hidden_dims, kernel_sizes):
+        super().__init__()
+
+        assert len(hidden_dims) == len(kernel_sizes)
+
+        self.num_layers = len(hidden_dims)
+        self.hidden_dims = hidden_dims
+
+        layers = []
+        in_dim = input_dim
+        for hdim, k in zip(hidden_dims, kernel_sizes):
+            layers.append(ConvGRUCell(in_dim, hdim, k))
+            in_dim = hdim
+
+        self.layers = nn.ModuleList(layers)
+
+        self.head = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(hidden_dims[-1], 1)
+        )
+
         self.bias = nn.Parameter(torch.zeros(1))
 
     def forward(self, x):
-        h = self.net(x)
-        h = self.norm(h)
-        return self.fc(h) + self.bias
+        B, T, C, H, W = x.shape
+
+        hs = [ torch.zeros(B, hdim, H, W, device=x.device) for hdim in self.hidden_dims]
+        for t in range(T):
+            inp = x[:, t]
+            for i, layer in enumerate(self.layers):
+                hs[i] = layer(inp, hs[i])
+                inp = hs[i]
+
+        return self.head(hs[-1]) + self.bias
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-train_ds = SolarDataset(x_train, y_train, seq_len, flatten=True)
-valid_ds = SolarDataset(x_valid, y_valid, seq_len, flatten=True)
-test_ds = SolarDataset(x_test, y_test, seq_len, flatten=True)
+train_ds = SolarDataset(x_train, y_train, seq_len, flatten=False)
+valid_ds = SolarDataset(x_valid, y_valid, seq_len, flatten=False)
+test_ds = SolarDataset(x_test, y_test, seq_len, flatten=False)
 
-train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
+train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, pin_memory=True)
+valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False, pin_memory=True)
 
-model = MLP(input_dim=len(train_ds[0][0])).to(device)
+input_dim = train_ds[0][0].shape[1]
+model = ConvGRU(input_dim=input_dim, hidden_dims=[64,32], kernel_sizes=[3,3]).to(device)
 
 # set other various parameters
 criterion = nn.MSELoss()
@@ -104,7 +140,7 @@ for epoch in range(1, num_epochs+1):
         preds = model(xb)
         loss = criterion(preds, yb)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
         train_epoch_loss += loss.item() * xb.size(0)
@@ -148,8 +184,8 @@ if best_state_dict is not None:
 
 print("\n-------------------\n")
 
-train_loader = DataLoader(train_ds, batch_size=batch_size)
-test_loader = DataLoader(test_ds, batch_size=batch_size)
+train_loader = DataLoader(train_ds, batch_size=batch_size, pin_memory=True)
+test_loader = DataLoader(test_ds, batch_size=batch_size, pin_memory=True)
 
 def predict(model, loader):
     preds = []
@@ -226,7 +262,7 @@ valid_r2 = r2_score(valid_true_day, valid_pred_day)
 test_r2 = r2_score(test_true_day, test_pred_day)
 
 # print results
-print("GHI METRICS")
+print("GHI-SPACE METRICS")
 print("Training Error")
 print("MSE:", train_mse)
 print("RMSE:", train_rmse)
@@ -251,15 +287,11 @@ print("MAE:", test_mae)
 print("MBE:", test_mbe)
 print("R^2:", test_r2)
 
-path = None
-if lagged:
-    path = f"mlp_lag_{seq_len}"
-else:
-    path = "mlp"
+path = f"convgru_{seq_len}"
 
 # save results
 with open("results/grid_results/" + path + ".txt", 'w') as file:
-    file.write("GHI METRICS\n")
+    file.write("GHI-SPACE METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -288,10 +320,7 @@ with open("results/grid_results/" + path + ".txt", 'w') as file:
 hours = np.arange(864) * (5/60) # 5 minutes to hours
 plt.plot(hours, test_true[:864], label="Actual")
 plt.plot(hours, test_pred_ghi[:864], label="Predicted")
-if lagged:
-    plt.title(f"MLP ({seq_len} Rows) GHI Pred vs Actual")
-else:
-    plt.title("MLP GHI Pred vs Actual")
+plt.title("ConvGRU GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")

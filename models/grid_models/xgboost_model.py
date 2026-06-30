@@ -131,32 +131,19 @@ train_mbe = mbe(train_true, train_pred_day)
 valid_mbe = mbe(valid_true, valid_pred_day)
 test_mbe = mbe(test_true, test_pred_day)
 
-# sMAPE
-def smape(y_true, y_pred):
-    y_true = np.asarray(y_true).flatten()
-    y_pred = np.asarray(y_pred).flatten()
-    den = (np.abs(y_true) + np.abs(y_pred)) / 2.0
-    mask = den > 1e-6
-    return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
-
-train_smape = smape(train_true, train_pred_day)
-valid_smape = smape(valid_true, valid_pred_day)
-test_smape = smape(test_true, test_pred_day)
-
 # R^2
 train_r2 = r2_score(train_true, train_pred_day)
 valid_r2 = r2_score(valid_true, valid_pred_day)
 test_r2 = r2_score(test_true, test_pred_day)
 
 # print results
-print("GHI-SPACE METRICS")
+print("GHI METRICS")
 print("Training Error")
 print("MSE:", train_mse)
 print("RMSE:", train_rmse)
 print("NRMSE:", train_nrmse)
 print("MAE:", train_mae)
 print("MBE:", train_mbe)
-print("sMAPE:", train_smape)
 print("R^2:", train_r2)
 
 print("\nValidation Error")
@@ -165,7 +152,6 @@ print("RMSE:", valid_rmse)
 print("NRMSE:", valid_nrmse)
 print("MAE:", valid_mae)
 print("MBE:", valid_mbe)
-print("sMAPE:", valid_smape)
 print("R^2:", valid_r2)
 
 print("\nTesting Error")
@@ -174,61 +160,19 @@ print("RMSE:", test_rmse)
 print("NRMSE:", test_nrmse)
 print("MAE:", test_mae)
 print("MBE:", test_mbe)
-print("sMAPE:", test_smape)
 print("R^2:", test_r2)
-
-# Extract daytime CSI truth and predictions
-train_true_csi = y_train[train_mask].flatten()
-valid_true_csi = y_valid[valid_mask].flatten()
-test_true_csi = y_test[test_mask].flatten()
-
-train_pred_csi = train_pred[train_mask]
-valid_pred_csi = valid_pred[valid_mask]
-test_pred_csi = test_pred[test_mask]
-
-# CSI MAE
-train_csi_mae = mean_absolute_error(train_true_csi, train_pred_csi)
-valid_csi_mae = mean_absolute_error(valid_true_csi, valid_pred_csi)
-test_csi_mae = mean_absolute_error(test_true_csi, test_pred_csi)
-
-# CSI sMAPE
-train_csi_smape = smape(train_true_csi, train_pred_csi)
-valid_csi_smape = smape(valid_true_csi, valid_pred_csi)
-test_csi_smape = smape(test_true_csi, test_pred_csi)
-
-# CSI R^2
-train_csi_r2 = r2_score(train_true_csi, train_pred_csi)
-valid_csi_r2 = r2_score(valid_true_csi, valid_pred_csi)
-test_csi_r2 = r2_score(test_true_csi, test_pred_csi)
-
-print("\nCSI-SPACE METRICS")
-print("Training Error")
-print("MAE: ", train_csi_mae)
-print("sMAPE: ", train_csi_smape)
-print("R^2:", train_csi_r2)
-
-print("\nValidation Error")
-print("MAE: ", valid_csi_mae)
-print("sMAPE: ", valid_csi_smape)
-print("R^2: ", valid_csi_r2)
-
-print("\nTesting Error")
-print("MAE: ", test_csi_mae)
-print("sMAPE: ", test_csi_smape)
-print("R^2: ", test_csi_r2)
 
 path = "xgboost"
 
 # save results
 with open("results/grid_results/" + path + ".txt", 'w') as file:
-    file.write("GHI-SPACE METRICS\n")
+    file.write("GHI METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
     file.write("NRMSE: " + str(train_nrmse) + "\n")
     file.write("MAE: " + str(train_mae) + "\n")
     file.write("MBE: " + str(train_mbe) + "\n")
-    file.write("sMAPE: " + str(train_smape) + "\n")
     file.write("R^2: " + str(train_r2) + "\n")
 
     file.write("\nValidation Error\n")
@@ -237,7 +181,6 @@ with open("results/grid_results/" + path + ".txt", 'w') as file:
     file.write("NRMSE: " + str(valid_nrmse) + "\n")
     file.write("MAE: " + str(valid_mae) + "\n")
     file.write("MBE: " + str(valid_mbe) + "\n")
-    file.write("sMAPE: " + str(valid_smape) + "\n")
     file.write("R^2: " + str(valid_r2) + "\n")
 
     file.write("\nTesting Error\n")
@@ -246,24 +189,8 @@ with open("results/grid_results/" + path + ".txt", 'w') as file:
     file.write("NRMSE: " + str(test_nrmse) + "\n")
     file.write("MAE: " + str(test_mae) + "\n")
     file.write("MBE: " + str(test_mbe) + "\n")
-    file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2) + "\n")
 
-    file.write("\nCSI-SPACE METRICS\n")
-    file.write("Training Error\n")
-    file.write("MAE: " + str(train_csi_mae) + "\n")
-    file.write("sMAPE: " + str(train_csi_smape) + "\n")
-    file.write("R^2: " + str(train_csi_r2) + "\n")
-
-    file.write("\nValidation Error\n")
-    file.write("MAE: " + str(valid_csi_mae) + "\n")
-    file.write("sMAPE: " + str(valid_csi_smape) + "\n")
-    file.write("R^2: " + str(valid_csi_r2) + "\n")
-
-    file.write("\nTesting Error\n")
-    file.write("MAE: " + str(test_csi_mae) + "\n")
-    file.write("sMAPE: " + str(test_csi_smape) + "\n")
-    file.write("R^2: " + str(test_csi_r2))
 
 # plot the results
 hours = np.arange(864) * (5/60) # 5 minutes to hours

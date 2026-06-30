@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from solar_dataset import SolarDataset
 
 num_epochs = 100
-batch_size = 16
+batch_size = 1024
 seq_len = 12
 
 early_stopping = True
@@ -40,9 +40,6 @@ y_train_ghi = np.load(path + "y_train_ghi.npy")
 y_valid_ghi = np.load(path + "y_valid_ghi.npy")
 y_test_ghi = np.load(path + "y_test_ghi.npy")
 
-import torch
-import torch.nn as nn
-
 class ConvLSTMCell(nn.Module):
     def __init__(self, input_dim, hidden_dim, kernel_size):
         super().__init__()
@@ -56,10 +53,13 @@ class ConvLSTMCell(nn.Module):
             padding=padding
         )
 
+        self.layer_norm = nn.LayerNorm([4*hidden_dim, 7, 7])
+        self.bias_gates = nn.Parameter(torch.zeros(4*hidden_dim))
+
     def forward(self, x, h, c):
         combined = torch.cat([x, h], dim=1)
-        gates = self.conv(combined)
-        i, f, o, g = torch.chunk(gates, 4, dim=1)
+        gates = self.layer_norm(self.conv(combined) + self.bias_gates.view(1, -1, 1, 1))
+        i, f, o, g = gates.chunk(4, dim=1)
 
         i = torch.sigmoid(i)
         f = torch.sigmoid(f)
@@ -94,6 +94,8 @@ class ConvLSTM(nn.Module):
             nn.Linear(hidden_dims[-1], 1)
         )
 
+        self.bias = nn.Parameter(torch.zeros(1))
+
     def forward(self, x):
         B, T, C, H, W = x.shape
 
@@ -109,13 +111,13 @@ class ConvLSTM(nn.Module):
                 hs[i], cs[i] = layer(inp, hs[i], cs[i])
                 inp = hs[i]
 
-        return self.head(hs[-1])
+        return self.head(hs[-1]) + self.bias
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-train_ds = SolarDataset(x_train, y_train, seq_len, flatten=False, device=device)
-valid_ds = SolarDataset(x_valid, y_valid, seq_len, flatten=False, device=device)
-test_ds = SolarDataset(x_test, y_test, seq_len, flatten=False, device=device)
+train_ds = SolarDataset(x_train, y_train, seq_len, flatten=False)
+valid_ds = SolarDataset(x_valid, y_valid, seq_len, flatten=False)
+test_ds = SolarDataset(x_test, y_test, seq_len, flatten=False)
 
 train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
@@ -124,9 +126,9 @@ input_dim = train_ds[0][0].shape[1]
 model = ConvLSTM(input_dim=input_dim, hidden_dims=[64,32], kernel_sizes=[3,3]).to(device)
 
 # set other various parameters
-criterion = nn.SmoothL1Loss(beta=0.1)
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=3e-4)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-5)
+criterion = nn.MSELoss()
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
 
 best_val_loss = float('inf')
 since_improvement = 0
@@ -140,10 +142,13 @@ for epoch in range(1, num_epochs+1):
     train_epoch_loss = 0.0
 
     for xb, yb in train_loader:
+        xb = xb.to(device)
+        yb = yb.to(device)
         optimizer.zero_grad()
         preds = model(xb)
         loss = criterion(preds, yb)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
         train_epoch_loss += loss.item() * xb.size(0)
@@ -156,6 +161,8 @@ for epoch in range(1, num_epochs+1):
 
     with torch.no_grad():
         for xb, yb in valid_loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
             preds = model(xb)
             loss = criterion(preds, yb)
 
@@ -217,18 +224,22 @@ train_day = future_sza_train[train_idx] < 90
 valid_day = future_sza_valid[valid_idx] < 90
 test_day = future_sza_test[test_idx] < 90
 
-train_true = y_train_ghi[train_idx][train_day]
-valid_true = y_valid_ghi[valid_idx][valid_day]
-test_true = y_test_ghi[test_idx][test_day]
+train_true = y_train_ghi[train_idx]
+valid_true = y_valid_ghi[valid_idx]
+test_true = y_test_ghi[test_idx]
+
+train_true_day = train_true[train_day]
+valid_true_day = valid_true[valid_day]
+test_true_day = test_true[test_day]
 
 train_pred_day = train_pred_ghi[train_day]
 valid_pred_day = valid_pred_ghi[valid_day]
 test_pred_day = test_pred_ghi[test_day]
 
 # MSE
-train_mse = mean_squared_error(train_true, train_pred_day)
-valid_mse = mean_squared_error(valid_true, valid_pred_day)
-test_mse = mean_squared_error(test_true, test_pred_day)
+train_mse = mean_squared_error(train_true_day, train_pred_day)
+valid_mse = mean_squared_error(valid_true_day, valid_pred_day)
+test_mse = mean_squared_error(test_true_day, test_pred_day)
 
 # RMSE
 train_rmse = np.sqrt(train_mse)
@@ -241,44 +252,31 @@ valid_nrmse = valid_rmse / valid_average_GHI
 test_nrmse = test_rmse / test_average_GHI
 
 # MAE
-train_mae = mean_absolute_error(train_true, train_pred_day)
-valid_mae = mean_absolute_error(valid_true, valid_pred_day)
-test_mae = mean_absolute_error(test_true, test_pred_day)
+train_mae = mean_absolute_error(train_true_day, train_pred_day)
+valid_mae = mean_absolute_error(valid_true_day, valid_pred_day)
+test_mae = mean_absolute_error(test_true_day, test_pred_day)
 
 # MBE
 def mbe(y_true, y_pred):
     return np.mean(y_pred - y_true)
 
-train_mbe = mbe(train_true, train_pred_day)
-valid_mbe = mbe(valid_true, valid_pred_day)
-test_mbe = mbe(test_true, test_pred_day)
-
-# sMAPE
-def smape(y_true, y_pred):
-    y_true = np.asarray(y_true).flatten()
-    y_pred = np.asarray(y_pred).flatten()
-    den = (np.abs(y_true) + np.abs(y_pred)) / 2.0
-    mask = den > 1e-6
-    return np.mean(np.abs(y_true[mask] - y_pred[mask]) / den[mask])
-
-train_smape = smape(train_true, train_pred_day)
-valid_smape = smape(valid_true, valid_pred_day)
-test_smape = smape(test_true, test_pred_day)
+train_mbe = mbe(train_true_day, train_pred_day)
+valid_mbe = mbe(valid_true_day, valid_pred_day)
+test_mbe = mbe(test_true_day, test_pred_day)
 
 # R^2
-train_r2 = r2_score(train_true, train_pred_day)
-valid_r2 = r2_score(valid_true, valid_pred_day)
-test_r2 = r2_score(test_true, test_pred_day)
+train_r2 = r2_score(train_true_day, train_pred_day)
+valid_r2 = r2_score(valid_true_day, valid_pred_day)
+test_r2 = r2_score(test_true_day, test_pred_day)
 
 # print results
-print("GHI-SPACE METRICS")
+print("GHI METRICS")
 print("Training Error")
 print("MSE:", train_mse)
 print("RMSE:", train_rmse)
 print("NRMSE:", train_nrmse)
 print("MAE:", train_mae)
 print("MBE:", train_mbe)
-print("sMAPE:", train_smape)
 print("R^2:", train_r2)
 
 print("\nValidation Error")
@@ -287,7 +285,6 @@ print("RMSE:", valid_rmse)
 print("NRMSE:", valid_nrmse)
 print("MAE:", valid_mae)
 print("MBE:", valid_mbe)
-print("sMAPE:", valid_smape)
 print("R^2:", valid_r2)
 
 print("\nTesting Error")
@@ -296,60 +293,19 @@ print("RMSE:", test_rmse)
 print("NRMSE:", test_nrmse)
 print("MAE:", test_mae)
 print("MBE:", test_mbe)
-print("sMAPE:", test_smape)
 print("R^2:", test_r2)
-
-train_true_csi = y_train[train_idx][train_day].flatten()
-valid_true_csi = y_valid[valid_idx][valid_day].flatten()
-test_true_csi = y_test[test_idx][test_day].flatten()
-
-train_pred_csi = train_pred[train_day]
-valid_pred_csi = valid_pred[valid_day]
-test_pred_csi = test_pred[test_day]
-
-# CSI MAE
-train_csi_mae = mean_absolute_error(train_true_csi, train_pred_csi)
-valid_csi_mae = mean_absolute_error(valid_true_csi, valid_pred_csi)
-test_csi_mae = mean_absolute_error(test_true_csi, test_pred_csi)
-
-# CSI sMAPE
-train_csi_smape = smape(train_true_csi, train_pred_csi)
-valid_csi_smape = smape(valid_true_csi, valid_pred_csi)
-test_csi_smape = smape(test_true_csi, test_pred_csi)
-
-# CSI R^2
-train_csi_r2 = r2_score(train_true_csi, train_pred_csi)
-valid_csi_r2 = r2_score(valid_true_csi, valid_pred_csi)
-test_csi_r2 = r2_score(test_true_csi, test_pred_csi)
-
-print("\nCSI-SPACE METRICS")
-print("Training Error")
-print("MAE: ", train_csi_mae)
-print("sMAPE: ", train_csi_smape)
-print("R^2:", train_csi_r2)
-
-print("\nValidation Error")
-print("MAE: ", valid_csi_mae)
-print("sMAPE: ", valid_csi_smape)
-print("R^2: ", valid_csi_r2)
-
-print("\nTesting Error")
-print("MAE: ", test_csi_mae)
-print("sMAPE: ", test_csi_smape)
-print("R^2: ", test_csi_r2)
 
 path = f"convlstm_{seq_len}"
 
 # save results
 with open("results/grid_results/" + path + ".txt", 'w') as file:
-    file.write("GHI-SPACE METRICS\n")
+    file.write("GHI METRICS\n")
     file.write("Training Error\n")
     file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
     file.write("NRMSE: " + str(train_nrmse) + "\n")
     file.write("MAE: " + str(train_mae) + "\n")
     file.write("MBE: " + str(train_mbe) + "\n")
-    file.write("sMAPE: " + str(train_smape) + "\n")
     file.write("R^2: " + str(train_r2) + "\n")
 
     file.write("\nValidation Error\n")
@@ -358,7 +314,6 @@ with open("results/grid_results/" + path + ".txt", 'w') as file:
     file.write("NRMSE: " + str(valid_nrmse) + "\n")
     file.write("MAE: " + str(valid_mae) + "\n")
     file.write("MBE: " + str(valid_mbe) + "\n")
-    file.write("sMAPE: " + str(valid_smape) + "\n")
     file.write("R^2: " + str(valid_r2) + "\n")
 
     file.write("\nTesting Error\n")
@@ -367,28 +322,11 @@ with open("results/grid_results/" + path + ".txt", 'w') as file:
     file.write("NRMSE: " + str(test_nrmse) + "\n")
     file.write("MAE: " + str(test_mae) + "\n")
     file.write("MBE: " + str(test_mbe) + "\n")
-    file.write("sMAPE: " + str(test_smape) + "\n")
     file.write("R^2: " + str(test_r2) + "\n")
-
-    file.write("\nCSI-SPACE METRICS\n")
-    file.write("Training Error\n")
-    file.write("MAE: " + str(train_csi_mae) + "\n")
-    file.write("sMAPE: " + str(train_csi_smape) + "\n")
-    file.write("R^2: " + str(train_csi_r2) + "\n")
-
-    file.write("\nValidation Error\n")
-    file.write("MAE: " + str(valid_csi_mae) + "\n")
-    file.write("sMAPE: " + str(valid_csi_smape) + "\n")
-    file.write("R^2: " + str(valid_csi_r2) + "\n")
-
-    file.write("\nTesting Error\n")
-    file.write("MAE: " + str(test_csi_mae) + "\n")
-    file.write("sMAPE: " + str(test_csi_smape) + "\n")
-    file.write("R^2: " + str(test_csi_r2))
 
 # plot the results
 hours = np.arange(864) * (5/60) # 5 minutes to hours
-plt.plot(hours, y_test_ghi[:864], label="Actual")
+plt.plot(hours, test_true[:864], label="Actual")
 plt.plot(hours, test_pred_ghi[:864], label="Predicted")
 plt.title("ConvLSTM GHI Pred vs Actual")
 plt.legend()
