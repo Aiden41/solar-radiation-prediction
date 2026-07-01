@@ -226,7 +226,6 @@ test_r2 = r2_score(test_true_day, test_pred_day)
 # print results
 print("GHI METRICS")
 print("Training Error")
-print("MSE:", train_mse)
 print("RMSE:", train_rmse)
 print("NRMSE:", train_nrmse)
 print("MAE:", train_mae)
@@ -234,7 +233,6 @@ print("MBE:", train_mbe)
 print("R^2:", train_r2)
 
 print("\nValidation Error")
-print("MSE:", valid_mse)
 print("RMSE:", valid_rmse)
 print("NRMSE:", valid_nrmse)
 print("MAE:", valid_mae)
@@ -242,7 +240,6 @@ print("MBE:", valid_mbe)
 print("R^2:", valid_r2)
 
 print("\nTesting Error")
-print("MSE:", test_mse)
 print("RMSE:", test_rmse)
 print("NRMSE:", test_nrmse)
 print("MAE:", test_mae)
@@ -259,7 +256,6 @@ else:
 with open("results/grid_results/" + path + ".txt", 'w') as file:
     file.write("GHI METRICS\n")
     file.write("Training Error\n")
-    file.write("MSE: " + str(train_mse) + "\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
     file.write("NRMSE: " + str(train_nrmse) + "\n")
     file.write("MAE: " + str(train_mae) + "\n")
@@ -267,7 +263,6 @@ with open("results/grid_results/" + path + ".txt", 'w') as file:
     file.write("R^2: " + str(train_r2) + "\n")
 
     file.write("\nValidation Error\n")
-    file.write("MSE: " + str(valid_mse) + "\n")
     file.write("RMSE: " + str(valid_rmse) + "\n")
     file.write("NRMSE: " + str(valid_nrmse) + "\n")
     file.write("MAE: " + str(valid_mae) + "\n")
@@ -275,7 +270,6 @@ with open("results/grid_results/" + path + ".txt", 'w') as file:
     file.write("R^2: " + str(valid_r2) + "\n")
 
     file.write("\nTesting Error\n")
-    file.write("MSE: " + str(test_mse) + "\n")
     file.write("RMSE: " + str(test_rmse) + "\n")
     file.write("NRMSE: " + str(test_nrmse) + "\n")
     file.write("MAE: " + str(test_mae) + "\n")
