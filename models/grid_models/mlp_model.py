@@ -63,12 +63,11 @@ class MLP(nn.Module):
 
         self.norm = nn.LayerNorm(512)
         self.fc = nn.Linear(512, 1)
-        self.bias = nn.Parameter(torch.zeros(1))
 
     def forward(self, x):
         h = self.net(x)
         h = self.norm(h)
-        return self.fc(h) + self.bias
+        return self.fc(h)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 

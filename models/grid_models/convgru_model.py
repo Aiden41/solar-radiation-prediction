@@ -91,19 +91,17 @@ class ConvGRU(nn.Module):
             nn.Linear(hidden_dims[-1], 1)
         )
 
-        self.bias = nn.Parameter(torch.zeros(1))
-
     def forward(self, x):
         B, T, C, H, W = x.shape
 
-        hs = [ torch.zeros(B, hdim, H, W, device=x.device) for hdim in self.hidden_dims]
+        hs = [torch.zeros(B, hdim, H, W, device=x.device) for hdim in self.hidden_dims]
         for t in range(T):
             inp = x[:, t]
             for i, layer in enumerate(self.layers):
                 hs[i] = layer(inp, hs[i])
                 inp = hs[i]
 
-        return self.head(hs[-1]) + self.bias
+        return self.head(hs[-1])
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 

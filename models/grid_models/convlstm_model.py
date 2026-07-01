@@ -94,8 +94,6 @@ class ConvLSTM(nn.Module):
             nn.Linear(hidden_dims[-1], 1)
         )
 
-        self.bias = nn.Parameter(torch.zeros(1))
-
     def forward(self, x):
         B, T, C, H, W = x.shape
 
@@ -111,7 +109,7 @@ class ConvLSTM(nn.Module):
                 hs[i], cs[i] = layer(inp, hs[i], cs[i])
                 inp = hs[i]
 
-        return self.head(hs[-1]) + self.bias
+        return self.head(hs[-1])
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 

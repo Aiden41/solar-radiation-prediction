@@ -164,13 +164,12 @@ class LSTM(nn.Module):
         )
         self.norm = nn.LayerNorm(hidden_dim)
         self.fc = nn.Linear(hidden_dim, horizon)
-        self.bias = nn.Parameter(torch.zeros(horizon))
 
     def forward(self, x):
         h, _ = self.lstm(x)
         h = h[:, -1, :]
         h = self.norm(h)
-        return self.fc(h) + self.bias
+        return self.fc(h)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LSTM(input_dim=x_train.shape[1], hidden_dim=256, num_layers=2, dropout=0.1).to(device)
@@ -404,8 +403,10 @@ if energy_metrics:
     test_energy_mbe = np.mean(test_pred_energy_day - test_actual_energy_day)
     test_energy_r2 = r2_score(test_actual_energy_day, test_pred_energy_day)
 
+path = f"results/point_results/{target.lower()}/lstm_{seq_len}"
+
 # save results
-with open(f"results/point_results/lstm_{seq_len}_{target.lower()}.txt", 'w') as file:
+with open(path + ".txt", 'w') as file:
     file.write("GHI METRICS\n")
     file.write("Training Error\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -482,7 +483,7 @@ plt.title(f"LSTM ({seq_len} Rows) GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig(f"results/point_results/lstm_{seq_len}_{target.lower()}.pdf")
+plt.savefig(path + ".pdf")
 plt.show(block=False)
 plt.close('all')
 
@@ -516,5 +517,5 @@ if energy_metrics:
     plt.legend()
     plt.ylabel("Energy (Wh/m\u00b2)")
     plt.xlabel("Hour")
-    plt.savefig(f"results/point_results/lstm_{seq_len}_{target.lower()}_energy.pdf")
+    plt.savefig(path + "_energy.pdf")
     plt.show(block=False)

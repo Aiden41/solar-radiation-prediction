@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from xgboost import XGBRegressor
 from sklearn.inspection import permutation_importance
 
-lagged = False
+lagged = True
 
 # to only predict 12th timestamp, flip these
 offset = 1 # number of rows ahead to predict
@@ -353,14 +353,14 @@ if energy_metrics:
     test_energy_mbe = np.mean(test_pred_energy_day - test_actual_energy_day)
     test_energy_r2 = r2_score(test_actual_energy_day, test_pred_energy_day)
 
-path = None
+path = f"results/point_results/{target.lower()}/xgboost"
 if lagged:
-    path = f"xgboost_lag_{seq_len}_{target.lower()}"
+    path += f"_lag_{seq_len}"
 else:
-    path = f"xgboost_{target.lower()}"
+    path += "_no_lag"
 
 # save results
-with open("results/point_results/" + path + ".txt", 'w') as file:
+with open(path + ".txt", 'w') as file:
     file.write("GHI METRICS\n")
     file.write("Training Error\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -437,7 +437,7 @@ plt.title(f"XGBoost ({seq_len} Rows) GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig("results/point_results/" + path + ".pdf")
+plt.savefig(path + ".pdf")
 plt.show(block=False)
 plt.close('all')
 
@@ -471,5 +471,5 @@ if energy_metrics:
     plt.legend()
     plt.ylabel("Energy (Wh/m\u00b2)")
     plt.xlabel("Hour")
-    plt.savefig("results/point_results/" + path + "_energy.pdf")
+    plt.savefig(path + "_energy.pdf")
     plt.show(block=False)
