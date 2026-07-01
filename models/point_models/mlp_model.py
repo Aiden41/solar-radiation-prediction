@@ -199,26 +199,6 @@ criterion = nn.MSELoss()
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
 
-# train_tensor = torch.tensor(x_train, dtype=torch.float32, device=device)
-# train_targets = torch.tensor(y_train, dtype=torch.float32, device=device)
-
-
-
-# train_loader = DataLoader(
-#     TensorDataset(train_tensor, train_targets),
-#     batch_size=batch_size,
-#     shuffle=True
-# )
-
-# valid_tensor = torch.tensor(x_valid, dtype=torch.float32, device=device)
-# valid_targets = torch.tensor(y_valid, dtype=torch.float32, device=device)
-
-# valid_loader = DataLoader(
-#     TensorDataset(valid_tensor, valid_targets),
-#     batch_size=batch_size,
-#     shuffle=False
-# )
-
 best_val_loss = float('inf')
 since_improvement = 0
 best_state_dict = None

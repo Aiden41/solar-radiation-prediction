@@ -7,9 +7,17 @@ from matplotlib import pyplot as plt
 from xgboost import XGBRegressor
 from sklearn.inspection import permutation_importance
 
+lagged = True
+
 # to only predict 12th timestamp, flip these
 offset = 1 # number of rows ahead to predict
 horizon = 12 # number of values to predict
+
+seq_len = None
+if lagged:
+    seq_len = 12
+else:
+    seq_len = 1
 
 target = 'CSI' # GHI or CSI
 
@@ -146,6 +154,29 @@ sza_train = train_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy(
 sza_valid = valid_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
 sza_test = test_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
 
+def build_lagged(arr, seq_len):
+    if seq_len == 1:
+        return arr
+
+    lagged = []
+    for t in range(seq_len - 1, len(arr)):
+        window = arr[t - seq_len + 1 : t + 1].reshape(-1)
+        lagged.append(window)
+    return np.array(lagged)
+
+x_train = build_lagged(x_train, seq_len)
+x_valid = build_lagged(x_valid, seq_len)
+x_test = build_lagged(x_test, seq_len)
+
+max_lag = seq_len - 1
+y_train = y_train[max_lag:]
+y_valid = y_valid[max_lag:]
+y_test = y_test[max_lag:]
+
+sza_train = sza_train[max_lag:]
+sza_valid = sza_valid[max_lag:]
+sza_test = sza_test[max_lag:]
+
 train_pred = np.zeros_like(y_train)
 valid_pred = np.zeros_like(y_valid)
 test_pred = np.zeros_like(y_test)
@@ -185,14 +216,14 @@ for h in range(horizon):
     valid_pred[:, h] = model.predict(x_valid)
     test_pred[:, h] = model.predict(x_test)
 
-train_true = train_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
-valid_true = valid_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
-test_true = test_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
+train_true = train_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[max_lag:]
+valid_true = valid_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[max_lag:]
+test_true = test_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[max_lag:]
 
 if target == 'CSI':
-    train_pred = train_pred * train_csghi
-    valid_pred = valid_pred * valid_csghi
-    test_pred = test_pred * test_csghi
+    train_pred = train_pred * train_csghi[max_lag:]
+    valid_pred = valid_pred * valid_csghi[max_lag:]
+    test_pred = test_pred * test_csghi[max_lag:]
 
 valid_mask = (sza_valid < 90)
 valid_true_day = valid_true[valid_mask]
@@ -328,8 +359,14 @@ if energy_metrics:
     test_energy_mbe = np.mean(test_pred_energy_day - test_actual_energy_day)
     test_energy_r2 = r2_score(test_actual_energy_day, test_pred_energy_day)
 
+path = None
+if lagged:
+    path = f"xgboost_lag_{seq_len}_{target.lower()}"
+else:
+    path = f"xgboost_{target.lower()}"
+
 # save results
-with open(f"results/point_results/xgboost_{target.lower()}.txt", 'w') as file:
+with open("results/point_results/" + path + ".txt", 'w') as file:
     file.write("GHI METRICS\n")
     file.write("Training Error\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -402,11 +439,11 @@ print("R^2:", test_r2)
 hours = np.arange(864) * (5/60) # 5 minutes to hours
 plt.plot(hours, test_true_h[:864], label="Actual")
 plt.plot(hours, test_pred_h[:864], label="Predicted")
-plt.title("XGBoost GHI Pred vs Actual")
+plt.title(f"XGBoost ({seq_len} Rows) GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig(f"results/point_results/xgboost_{target.lower()}.pdf")
+plt.savefig("results/point_results/" + path + ".pdf")
 plt.show(block=False)
 plt.close('all')
 
@@ -436,9 +473,9 @@ if energy_metrics:
     hours = np.arange(864) * (5/60) # 5 minutes to hours
     plt.plot(hours, test_actual_energy[:864], label="Actual")
     plt.plot(hours, test_pred_energy[:864], label="Predicted")
-    plt.title("XGBoost Energy Pred vs Actual")
+    plt.title(f"XGBoost ({seq_len} Rows) Energy Pred vs Actual")
     plt.legend()
     plt.ylabel("Energy (Wh/m\u00b2)")
     plt.xlabel("Hour")
-    plt.savefig(f"results/point_results/xgboost_{target.lower()}_energy.pdf")
+    plt.savefig("results/point_results/" + path + "_energy.pdf")
     plt.show(block=False)
