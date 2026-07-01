@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from xgboost import XGBRegressor
 from sklearn.inspection import permutation_importance
 
-lagged = True
+lagged = False
 
 # to only predict 12th timestamp, flip these
 offset = 1 # number of rows ahead to predict
@@ -228,12 +228,6 @@ if target == 'CSI':
 valid_mask = (sza_valid < 90)
 valid_true_day = valid_true[valid_mask]
 valid_pred_day = valid_pred[valid_mask]
-
-# bias correction
-delta = np.mean(valid_pred_day - valid_true_day)
-train_pred = train_pred - delta
-valid_pred = valid_pred - delta
-test_pred = test_pred - delta
 
 # remove negative values
 test_pred = np.maximum(test_pred, 0)

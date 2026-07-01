@@ -104,7 +104,6 @@ for epoch in range(1, num_epochs+1):
         preds = model(xb)
         loss = criterion(preds, yb)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         train_epoch_loss += loss.item() * xb.size(0)

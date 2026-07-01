@@ -9,7 +9,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from solar_dataset import SolarDataset
 
-lagged = False
+lagged = True
 num_epochs = 100
 batch_size = 1024
 
@@ -294,12 +294,6 @@ if target == 'CSI':
 valid_mask = (sza_valid[valid_idx] < 90).any(axis=1)
 valid_true_day = valid_true[valid_mask]
 valid_pred_day = valid_pred[valid_mask]
-
-# bias correction
-delta = np.mean(valid_pred_day - valid_true_day)
-train_pred = train_pred - delta
-valid_pred = valid_pred - delta
-test_pred = test_pred - delta
 
 # remove negative values
 test_pred = np.maximum(test_pred, 0)
