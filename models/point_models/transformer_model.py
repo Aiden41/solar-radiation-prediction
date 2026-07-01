@@ -445,7 +445,7 @@ if energy_metrics:
     test_energy_r2 = r2_score(test_actual_energy_day, test_pred_energy_day)
 
 # save results
-with open(f"results/point_results/transformer_{target.lower()}_{seq_len}.txt", 'w') as file:
+with open(f"results/point_results/transformer_{seq_len}_{target.lower()}.txt", 'w') as file:
     file.write("GHI METRICS\n")
     file.write("Training Error\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -522,7 +522,7 @@ plt.title(f"Transformer ({seq_len} Rows) GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig(f"results/point_results/transformer_{target.lower()}_{seq_len}.pdf")
+plt.savefig(f"results/point_results/transformer_{seq_len}_{target.lower()}.pdf")
 plt.show(block=False)
 plt.close('all')
 
@@ -556,5 +556,5 @@ if energy_metrics:
     plt.legend()
     plt.ylabel("Energy (Wh/m\u00b2)")
     plt.xlabel("Hour")
-    plt.savefig(f"results/point_results/transformer_{target.lower()}_{seq_len}_energy.pdf")
+    plt.savefig(f"results/point_results/transformer_{seq_len}_{target.lower()}_energy.pdf")
     plt.show(block=False)

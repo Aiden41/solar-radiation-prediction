@@ -6,8 +6,10 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from matplotlib import pyplot as plt
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
+from solar_dataset import SolarDataset
 
+lagged = False
 num_epochs = 100
 batch_size = 1024
 
@@ -17,6 +19,12 @@ patience = 8
 # to only predict 12th timestamp, flip these
 offset = 1 # number of rows ahead to predict
 horizon = 12 # number of values to predict 
+
+seq_len = None
+if lagged:
+    seq_len = 12
+else:
+    seq_len = 1
 
 target = 'CSI' # GHI or CSI
 
@@ -175,30 +183,41 @@ class MLP(nn.Module):
         return self.fc(h) + self.bias
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = MLP(input_dim=x_train.shape[1]).to(device)
+
+train_ds = SolarDataset(x_train, y_train, seq_len, flatten=True)
+valid_ds = SolarDataset(x_valid, y_valid, seq_len, flatten=True)
+test_ds = SolarDataset(x_test, y_test, seq_len, flatten=True)
+
+train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
+
+input_dim = train_ds[0][0].shape[0]
+model = MLP(input_dim=input_dim).to(device)
 
 # set other various parameters
 criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
 
-train_tensor = torch.tensor(x_train, dtype=torch.float32, device=device)
-train_targets = torch.tensor(y_train, dtype=torch.float32, device=device)
+# train_tensor = torch.tensor(x_train, dtype=torch.float32, device=device)
+# train_targets = torch.tensor(y_train, dtype=torch.float32, device=device)
 
-train_loader = DataLoader(
-    TensorDataset(train_tensor, train_targets),
-    batch_size=batch_size,
-    shuffle=True
-)
 
-valid_tensor = torch.tensor(x_valid, dtype=torch.float32, device=device)
-valid_targets = torch.tensor(y_valid, dtype=torch.float32, device=device)
 
-valid_loader = DataLoader(
-    TensorDataset(valid_tensor, valid_targets),
-    batch_size=batch_size,
-    shuffle=False
-)
+# train_loader = DataLoader(
+#     TensorDataset(train_tensor, train_targets),
+#     batch_size=batch_size,
+#     shuffle=True
+# )
+
+# valid_tensor = torch.tensor(x_valid, dtype=torch.float32, device=device)
+# valid_targets = torch.tensor(y_valid, dtype=torch.float32, device=device)
+
+# valid_loader = DataLoader(
+#     TensorDataset(valid_tensor, valid_targets),
+#     batch_size=batch_size,
+#     shuffle=False
+# )
 
 best_val_loss = float('inf')
 since_improvement = 0
@@ -212,6 +231,8 @@ for epoch in range(1, num_epochs+1):
     train_epoch_loss = 0.0
 
     for xb, yb in train_loader:
+        xb = xb.to(device)
+        yb = yb.to(device)
         optimizer.zero_grad()
         preds = model(xb)
         loss = criterion(preds, yb)
@@ -219,7 +240,7 @@ for epoch in range(1, num_epochs+1):
         optimizer.step()
         train_epoch_loss += loss.item() * xb.size(0)
 
-    train_epoch_loss /= len(train_tensor)
+    train_epoch_loss /= len(x_train)
     train_losses.append(train_epoch_loss)
 
     model.eval()
@@ -227,11 +248,13 @@ for epoch in range(1, num_epochs+1):
 
     with torch.no_grad():
         for xb, yb in valid_loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
             preds = model(xb)
             loss = criterion(preds, yb)
             valid_epoch_loss += loss.item() * xb.size(0)
 
-    valid_epoch_loss /= len(valid_tensor)
+    valid_epoch_loss /= len(x_valid)
     valid_losses.append(valid_epoch_loss)
 
     print(f"Epoch {epoch}/{num_epochs}, Train Loss: {train_epoch_loss:.4f}, Valid Loss: {valid_epoch_loss:.4f}")
@@ -255,26 +278,40 @@ if best_state_dict is not None:
 
 print("\n-------------------\n")
 
+train_loader = DataLoader(train_ds, batch_size=batch_size)
+test_loader = DataLoader(test_ds, batch_size=batch_size)
+
+def predict(model, loader):
+    preds = []
+    with torch.no_grad():
+        for xb, _ in loader:
+            xb = xb.to(device)
+            preds.append(model(xb).cpu().numpy())
+    return np.concatenate(preds, axis=0)
+
 model.eval()
-with torch.no_grad():
-    train_pred = model(train_tensor).cpu().numpy()
-    valid_pred = model(valid_tensor).cpu().numpy()
-    test_pred = model(torch.tensor(x_test, dtype=torch.float32, device=device)).cpu().numpy()
+train_pred = predict(model, train_loader)
+valid_pred = predict(model, valid_loader)
+test_pred = predict(model, test_loader)
+
+train_idx = train_ds.valid
+valid_idx = valid_ds.valid
+test_idx = test_ds.valid
 
 sza_train = train_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
 sza_valid = valid_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
 sza_test = test_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy()
 
-train_true = train_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
-valid_true = valid_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
-test_true = test_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()
+train_true = train_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[train_idx]
+valid_true = valid_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[valid_idx]
+test_true = test_dataset[[f"Future_GHI_{h}" for h in range(horizon)]].to_numpy()[test_idx]
 
 if target == 'CSI':
-    train_pred = train_pred * train_csghi
-    valid_pred = valid_pred * valid_csghi
-    test_pred = test_pred * test_csghi
+    train_pred = train_pred * train_csghi[train_idx]
+    valid_pred = valid_pred * valid_csghi[valid_idx]
+    test_pred = test_pred * test_csghi[test_idx]
 
-valid_mask = (sza_valid < 90)
+valid_mask = (sza_valid[valid_idx] < 90).any(axis=1)
 valid_true_day = valid_true[valid_mask]
 valid_pred_day = valid_pred[valid_mask]
 
@@ -290,9 +327,9 @@ valid_pred = np.maximum(valid_pred, 0)
 train_pred = np.maximum(train_pred, 0)
 
 # zero out nighttime predictions
-train_pred[sza_train >= 90] = 0
-valid_pred[sza_valid >= 90] = 0
-test_pred[sza_test >= 90] = 0
+train_pred[sza_train[train_idx] >= 90] = 0
+valid_pred[sza_valid[valid_idx] >= 90] = 0
+test_pred[sza_test[test_idx] >= 90] = 0
 
 def mbe(y_true, y_pred):
     return np.mean(y_pred - y_true)
@@ -317,9 +354,9 @@ for h_idx in range(horizon):
     sza_valid_h = sza_valid[:, h_idx]
     sza_test_h = sza_test[:, h_idx]
 
-    train_mask = sza_train_h < 90
-    valid_mask = sza_valid_h < 90
-    test_mask = sza_test_h < 90
+    train_mask = sza_train_h[train_idx] < 90
+    valid_mask = sza_valid_h[valid_idx] < 90
+    test_mask = sza_test_h[test_idx] < 90
 
     # mask real values to daytime only
     train_true_day = train_true_h[train_mask]
@@ -374,9 +411,9 @@ if energy_metrics:
     test_actual_energy = test_true.sum(axis=1) * (5/60)
     test_pred_energy = test_pred.sum(axis=1) * (5/60)
 
-    train_energy_mask = (sza_train < 90).any(axis=1)
-    valid_energy_mask = (sza_valid < 90).any(axis=1)
-    test_energy_mask = (sza_test < 90).any(axis=1)
+    train_energy_mask = (sza_train[train_idx] < 90).any(axis=1)
+    valid_energy_mask = (sza_valid[valid_idx] < 90).any(axis=1)
+    test_energy_mask = (sza_test[test_idx] < 90).any(axis=1)
 
     train_actual_energy_day = train_actual_energy[train_energy_mask]
     train_pred_energy_day = train_pred_energy[train_energy_mask]
@@ -408,8 +445,14 @@ if energy_metrics:
     test_energy_mbe = np.mean(test_pred_energy_day - test_actual_energy_day)
     test_energy_r2 = r2_score(test_actual_energy_day, test_pred_energy_day)
 
+path = None
+if lagged:
+    path = f"mlp_lag_{seq_len}_{target.lower()}"
+else:
+    path = f"mlp_{target.lower()}"
+
 # save results
-with open(f"results/point_results/mlp_{target.lower()}.txt", 'w') as file:
+with open("results/point_results/" + path + ".txt", 'w') as file:
     file.write("GHI METRICS\n")
     file.write("Training Error\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -482,11 +525,14 @@ print("R^2:", test_r2)
 hours = np.arange(864) * (5/60) # 5 minutes to hours
 plt.plot(hours, test_true_h[:864], label="Actual")
 plt.plot(hours, test_pred_h[:864], label="Predicted")
-plt.title("MLP GHI Pred vs Actual")
+if lagged:
+    plt.title(f"MLP ({seq_len} Rows) GHI Pred vs Actual")
+else:
+    plt.title("MLP GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig(f"results/point_results/mlp_{target.lower()}.pdf")
+plt.savefig("results/point_results/" + path + ".pdf")
 plt.show(block=False)
 plt.close('all')
 
@@ -520,5 +566,5 @@ if energy_metrics:
     plt.legend()
     plt.ylabel("Energy (Wh/m\u00b2)")
     plt.xlabel("Hour")
-    plt.savefig(f"results/point_results/mlp_{target.lower()}_energy.pdf")
+    plt.savefig("results/point_results/" + path + "_energy.pdf")
     plt.show(block=False)

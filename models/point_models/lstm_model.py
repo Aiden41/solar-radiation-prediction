@@ -177,7 +177,7 @@ model = LSTM(input_dim=x_train.shape[1], hidden_dim=256, num_layers=2, dropout=0
 
 # set other various parameters
 criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
 
 train_ds = SolarDataset(data=x_train, targets=y_train, seq_len=seq_len, device=device, flatten=False)
@@ -411,7 +411,7 @@ if energy_metrics:
     test_energy_r2 = r2_score(test_actual_energy_day, test_pred_energy_day)
 
 # save results
-with open(f"results/point_results/lstm_{target.lower()}_{seq_len}.txt", 'w') as file:
+with open(f"results/point_results/lstm_{seq_len}_{target.lower()}.txt", 'w') as file:
     file.write("GHI METRICS\n")
     file.write("Training Error\n")
     file.write("RMSE: " + str(train_rmse) + "\n")
@@ -488,7 +488,7 @@ plt.title(f"LSTM ({seq_len} Rows) GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
-plt.savefig(f"results/point_results/lstm_{target.lower()}_{seq_len}.pdf")
+plt.savefig(f"results/point_results/lstm_{seq_len}_{target.lower()}.pdf")
 plt.show(block=False)
 plt.close('all')
 
@@ -522,5 +522,5 @@ if energy_metrics:
     plt.legend()
     plt.ylabel("Energy (Wh/m\u00b2)")
     plt.xlabel("Hour")
-    plt.savefig(f"results/point_results/lstm_{target.lower()}_{seq_len}_energy.pdf")
+    plt.savefig(f"results/point_results/lstm_{seq_len}_{target.lower()}_energy.pdf")
     plt.show(block=False)

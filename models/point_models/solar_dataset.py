@@ -18,6 +18,6 @@ class SolarDataset(Dataset):
         target = self.targets[t]
 
         if self.flatten:
-            seq = seq.view(-1)
+            seq = seq.reshape(-1)
 
         return seq, target
