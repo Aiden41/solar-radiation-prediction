@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from solar_dataset import SolarDataset
 
 lagged = True
+
 num_epochs = 100
 batch_size = 1024
 
@@ -190,12 +191,12 @@ test_ds = SolarDataset(x_test, y_test, seq_len, flatten=True)
 train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
 
-input_dim = train_ds[0][0].shape[0]
+input_dim = len(train_ds[0][0])
 model = MLP(input_dim=input_dim).to(device)
 
 # set other various parameters
 criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
 
 best_val_loss = float('inf')
@@ -295,9 +296,9 @@ valid_true_day = valid_true[valid_mask]
 valid_pred_day = valid_pred[valid_mask]
 
 # remove negative values
-test_pred = np.maximum(test_pred, 0)
 valid_pred = np.maximum(valid_pred, 0)
 train_pred = np.maximum(train_pred, 0)
+test_pred = np.maximum(test_pred, 0)
 
 # zero out nighttime predictions
 train_pred[sza_train[train_idx] >= 90] = 0

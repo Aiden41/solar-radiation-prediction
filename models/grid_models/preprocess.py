@@ -3,7 +3,8 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.compose import ColumnTransformer
 
-offset = 12 # adjust this!
+offset = 1 # adjust this!
+horizon = 12 # adjust this!
 
 all_x_train_raw = []
 all_x_valid_raw = []
@@ -11,7 +12,7 @@ all_x_test_raw = []
 
 for x in range(1,8):
     for y in range(1,8):
-        path = f"data/5min/row{x}/{y}/data.csv" # adjust this!
+        path = f"data/5min/row{x}/{y}/data.csv"
 
         dataset = pd.read_csv(path, dtype=np.float32)
         dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
@@ -74,38 +75,36 @@ for x in range(1,8):
         test_dataset.loc[mask, 'CSI'] = 0.0
 
         # move up deterministic columns and place into new columns
-        train_dataset["Future_SZA"] = train_dataset["Solar Zenith Angle"].shift(-offset)
-        valid_dataset["Future_SZA"] = valid_dataset["Solar Zenith Angle"].shift(-offset)
-        test_dataset["Future_SZA"] = test_dataset["Solar Zenith Angle"].shift(-offset)
+        for h in range(horizon):
+            shift = offset + h
+            train_dataset[f"Future_GHI_{h}"] = train_dataset["GHI"].shift(-shift)
+            valid_dataset[f"Future_GHI_{h}"] = valid_dataset["GHI"].shift(-shift)
+            test_dataset[f"Future_GHI_{h}"] = test_dataset["GHI"].shift(-shift)
 
-        train_dataset["Future_CS_GHI"] = train_dataset["Clearsky GHI"].shift(-offset)
-        valid_dataset["Future_CS_GHI"] = valid_dataset["Clearsky GHI"].shift(-offset)
-        test_dataset["Future_CS_GHI"] = test_dataset["Clearsky GHI"].shift(-offset)
+            train_dataset[f"Future_CSI_{h}"] = train_dataset["CSI"].shift(-shift)
+            valid_dataset[f"Future_CSI_{h}"] = valid_dataset["CSI"].shift(-shift)
+            test_dataset[f"Future_CSI_{h}"] = test_dataset["CSI"].shift(-shift)
 
-        train_dataset["Future_CS_DNI"] = train_dataset["Clearsky DNI"].shift(-offset)
-        valid_dataset["Future_CS_DNI"] = valid_dataset["Clearsky DNI"].shift(-offset)
-        test_dataset["Future_CS_DNI"] = test_dataset["Clearsky DNI"].shift(-offset)
+            train_dataset[f"Future_CS_GHI_{h}"] = train_dataset["Clearsky GHI"].shift(-shift)
+            valid_dataset[f"Future_CS_GHI_{h}"] = valid_dataset["Clearsky GHI"].shift(-shift)
+            test_dataset[f"Future_CS_GHI_{h}"] = test_dataset["Clearsky GHI"].shift(-shift)
 
-        train_dataset["Future_CS_DHI"] = train_dataset["Clearsky DHI"].shift(-offset)
-        valid_dataset["Future_CS_DHI"] = valid_dataset["Clearsky DHI"].shift(-offset)
-        test_dataset["Future_CS_DHI"] = test_dataset["Clearsky DHI"].shift(-offset)
+            train_dataset[f"Future_SZA_{h}"] = train_dataset["Solar Zenith Angle"].shift(-shift)
+            valid_dataset[f"Future_SZA_{h}"] = valid_dataset["Solar Zenith Angle"].shift(-shift)
+            test_dataset[f"Future_SZA_{h}"] = test_dataset["Solar Zenith Angle"].shift(-shift)
 
-        train_dataset["Future_GHI"] = train_dataset["GHI"].shift(-offset)
-        valid_dataset["Future_GHI"] = valid_dataset["GHI"].shift(-offset)
-        test_dataset["Future_GHI"] = test_dataset["GHI"].shift(-offset)
-
-        train_dataset["Future_CSI"] = train_dataset["CSI"].shift(-offset)
-        valid_dataset["Future_CSI"] = valid_dataset["CSI"].shift(-offset)
-        test_dataset["Future_CSI"] = test_dataset["CSI"].shift(-offset)
-
-        train_dataset = train_dataset.iloc[:-offset]
-        valid_dataset = valid_dataset.iloc[:-offset]
-        test_dataset = test_dataset.iloc[:-offset]
+        cut = offset + horizon
+        train_dataset = train_dataset.iloc[:-cut]
+        valid_dataset = valid_dataset.iloc[:-cut]
+        test_dataset = test_dataset.iloc[:-cut]
 
         # all_columns = list(train_dataset.columns)
 
-        future_columns = ['Future_SZA', 'Future_CS_GHI', 'Future_CS_DNI', 'Future_CS_DHI', 'Future_GHI', 'Future_CSI']
-        drop_columns = ['Minute', 'Month', 'Hour', 'Year', 'Day', 'DayOfYear', 'Temperature', 'Alpha', 'Ozone', 'Dew Point', 'Surface Albedo', 'Pressure', 'Aerosol Optical Depth', 'Asymmetry', 'Solar Zenith Angle', 'Clearsky DNI', 'Clearsky DHI', 'Clearsky GHI'] + future_columns
+        future_columns = []
+        for h in range(horizon):
+            future_columns += [f"Future_SZA_{h}", f"Future_GHI_{h}", f"Future_CSI_{h}", f"Future_CS_GHI_{h}"]
+
+        drop_columns = ['Minute', 'Month', 'Hour', 'Year', 'Day', 'DayOfYear', 'Temperature', 'Alpha', 'Ozone', 'Dew Point', 'Surface Albedo', 'Pressure', 'Aerosol Optical Depth', 'Asymmetry', 'Clearsky DNI', 'Clearsky DHI', 'Clearsky GHI'] + future_columns
 
         x_train = train_dataset.drop(columns = drop_columns)
         x_valid = valid_dataset.drop(columns = drop_columns)
@@ -134,36 +133,24 @@ for x in range(1,8):
             test_average = np.mean(test_dataset['CSI'][test_mask])
             test_average_GHI = np.mean(test_dataset['GHI'][test_mask])
 
-            y_train = train_dataset[["Future_CSI"]].to_numpy().copy()
-            y_valid = valid_dataset[["Future_CSI"]].to_numpy().copy()
-            y_test = test_dataset[["Future_CSI"]].to_numpy().copy()
-            future_sza_train = train_dataset["Future_SZA"].to_numpy().copy()
-            future_sza_valid = valid_dataset["Future_SZA"].to_numpy().copy()
-            future_sza_test = test_dataset["Future_SZA"].to_numpy().copy()
+            future_csi_cols = [f"Future_CSI_{h}" for h in range(horizon)]
+            y_train = train_dataset[future_csi_cols].to_numpy().astype(np.float32).copy()
+            y_valid = valid_dataset[future_csi_cols].to_numpy().astype(np.float32).copy()
+            y_test = test_dataset[future_csi_cols].to_numpy().astype(np.float32).copy()
 
-            future_cs_ghi_train = train_dataset["Future_CS_GHI"].to_numpy().copy()
-            future_cs_ghi_valid = valid_dataset["Future_CS_GHI"].to_numpy().copy()
-            future_cs_ghi_test = test_dataset["Future_CS_GHI"].to_numpy().copy()
+            future_csghi_cols = [f"Future_CS_GHI_{h}" for h in range(horizon)]
+            train_csghi = train_dataset[future_csghi_cols].to_numpy().astype(np.float32).copy()
+            valid_csghi = valid_dataset[future_csghi_cols].to_numpy().astype(np.float32).copy()
+            test_csghi = test_dataset[future_csghi_cols].to_numpy().astype(np.float32).copy()
 
-            y_train_ghi = train_dataset["Future_GHI"].to_numpy().copy()
-            y_valid_ghi = valid_dataset["Future_GHI"].to_numpy().copy()
-            y_test_ghi = test_dataset["Future_GHI"].to_numpy().copy()
+            future_ghi_cols = [f"Future_GHI_{h}" for h in range(horizon)]
+            y_train_ghi = train_dataset[future_ghi_cols].to_numpy().astype(np.float32).copy()
+            y_valid_ghi = valid_dataset[future_ghi_cols].to_numpy().astype(np.float32).copy()
+            y_test_ghi = test_dataset[future_ghi_cols].to_numpy().astype(np.float32).copy()
 
-            y_train = y_train.astype(np.float32)
-            y_valid = y_valid.astype(np.float32)
-            y_test = y_test.astype(np.float32)
-
-            y_train_ghi = y_train_ghi.astype(np.float32)
-            y_valid_ghi = y_valid_ghi.astype(np.float32)
-            y_test_ghi = y_test_ghi.astype(np.float32)
-
-            future_sza_train = future_sza_train.astype(np.float32)
-            future_sza_valid = future_sza_valid.astype(np.float32)
-            future_sza_test = future_sza_test.astype(np.float32)
-
-            future_cs_ghi_train = future_cs_ghi_train.astype(np.float32)
-            future_cs_ghi_valid = future_cs_ghi_valid.astype(np.float32)
-            future_cs_ghi_test = future_cs_ghi_test.astype(np.float32)
+            sza_train = train_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy().astype(np.float32).copy()
+            sza_valid = valid_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy().astype(np.float32).copy()
+            sza_test = test_dataset[[f"Future_SZA_{h}" for h in range(horizon)]].to_numpy().astype(np.float32).copy()
 
 # reorder to alphabetical
 all_columns = sorted(set().union(*[df.columns for df in all_x_train_raw]))
@@ -236,13 +223,13 @@ np.save("saves/preprocessed/test_weights.npy", test_weights)
 
 np.save("saves/preprocessed/averages.npy", np.array([train_average_GHI, valid_average_GHI, test_average_GHI], dtype=np.float32))
 
-np.save("saves/preprocessed/future_sza_train.npy", future_sza_train)
-np.save("saves/preprocessed/future_sza_valid.npy", future_sza_valid)
-np.save("saves/preprocessed/future_sza_test.npy", future_sza_test)
+np.save("saves/preprocessed/future_sza_train.npy", sza_train)
+np.save("saves/preprocessed/future_sza_valid.npy", sza_valid)
+np.save("saves/preprocessed/future_sza_test.npy", sza_test)
 
-np.save("saves/preprocessed/future_cs_ghi_train.npy", future_cs_ghi_train)
-np.save("saves/preprocessed/future_cs_ghi_valid.npy", future_cs_ghi_valid)
-np.save("saves/preprocessed/future_cs_ghi_test.npy", future_cs_ghi_test)
+np.save("saves/preprocessed/future_cs_ghi_train.npy", train_csghi)
+np.save("saves/preprocessed/future_cs_ghi_valid.npy", valid_csghi)
+np.save("saves/preprocessed/future_cs_ghi_test.npy", test_csghi)
 
 np.save("saves/preprocessed/y_train_ghi.npy", y_train_ghi)
 np.save("saves/preprocessed/y_valid_ghi.npy", y_valid_ghi)

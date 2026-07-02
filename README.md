@@ -1,6 +1,6 @@
 Codebase for solar radiation prediction research.
 
-Current development is on updating grid model methodologies
+Current development is on updating xgboost grid model methodology
 
 Future work includes creating more deep learning models, grid shape + spacing optimizations, and generating various figures.
 
