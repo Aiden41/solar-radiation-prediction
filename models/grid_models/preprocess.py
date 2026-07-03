@@ -100,6 +100,8 @@ for x in range(1,8):
 
         # all_columns = list(train_dataset.columns)
 
+        # ['Wind Speed', 'Wind Direction', 'Precipitable Water', 'SSA', 'Solar Zenith Angle', 'Relative Humidity', 'GHI', 'DHI', 'DNI', 'Cloud Type_0.0', 'Cloud Type_1.0', 'Cloud Type_2.0', 'Cloud Type_3.0', 'Cloud Type_4.0', 'Cloud Type_5.0', 'Cloud Type_6.0', 'Cloud Type_7.0', 'Cloud Type_8.0', 'Cloud Type_9.0', 'Cloud Type_11.0', 'DayOfYear_Sin', 'DayOfYear_Cos', 'Sin_Hour', 'Cos_Hour', 'Sin_Month', 'Cos_Month', 'CSI']
+
         future_columns = []
         for h in range(horizon):
             future_columns += [f"Future_SZA_{h}", f"Future_GHI_{h}", f"Future_CSI_{h}", f"Future_CS_GHI_{h}"]
@@ -111,7 +113,8 @@ for x in range(1,8):
         x_test = test_dataset.drop(columns = drop_columns)
 
         remaining_columns = list(x_train.columns)
-        # print(remaining_columns)
+        print(remaining_columns)
+        input()
 
         x_train = x_train.astype(np.float32)
         x_valid = x_valid.astype(np.float32)
