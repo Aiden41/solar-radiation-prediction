@@ -18,9 +18,8 @@ patience = 8
 horizon = 12 # number of values to predict
 
 path = "saves/preprocessed/"
-seq_len = 12
 
-target = 'CSI' # GHI or CSI
+target = 'GHI' # GHI or CSI
 
 energy_metrics = True
 
@@ -33,9 +32,9 @@ if target == 'CSI':
     y_valid = np.load(path + "y_valid.npy")
     y_test = np.load(path + "y_test.npy")
 else:
-    y_train = np.load(path + "y_train_ghi.npy") / 1000
-    y_valid = np.load(path + "y_valid_ghi.npy") / 1000
-    y_test = np.load(path + "y_test_ghi.npy") / 1000
+    y_train = np.load(path + "y_train_ghi.npy")
+    y_valid = np.load(path + "y_valid_ghi.npy")
+    y_test = np.load(path + "y_test_ghi.npy")
 
 y_train_ghi = np.load(path + "y_train_ghi.npy")
 y_valid_ghi = np.load(path + "y_valid_ghi.npy")
@@ -54,88 +53,43 @@ future_cs_ghi_train = np.load(path+ "future_cs_ghi_train.npy")
 future_cs_ghi_valid = np.load(path + "future_cs_ghi_valid.npy")
 future_cs_ghi_test = np.load(path + "future_cs_ghi_test.npy")
 
-class ConvLSTMCell(nn.Module):
-    def __init__(self, input_dim, hidden_dim, kernel_size):
-        super().__init__()
-        padding = kernel_size // 2
-        self.hidden_dim = hidden_dim
-
-        self.conv = nn.Conv2d(
-            in_channels=input_dim + hidden_dim,
-            out_channels=4 * hidden_dim,
-            kernel_size=kernel_size,
-            padding=padding
-        )
-
-        self.layer_norm = nn.LayerNorm([4*hidden_dim, 7, 7])
-        self.bias_gates = nn.Parameter(torch.zeros(4*hidden_dim))
-
-    def forward(self, x, h, c):
-        combined = torch.cat([x, h], dim=1)
-        gates = self.layer_norm(self.conv(combined) + self.bias_gates.view(1, -1, 1, 1))
-        i, f, o, g = gates.chunk(4, dim=1)
-
-        i = torch.sigmoid(i)
-        f = torch.sigmoid(f)
-        o = torch.sigmoid(o)
-        g = torch.tanh(g)
-
-        c_next = f * c + i * g
-        h_next = o * torch.tanh(c_next)
-        return h_next, c_next
-
-class ConvLSTM(nn.Module):
-    def __init__(self, input_dim, hidden_dims, kernel_sizes):
+class CNN(nn.Module):
+    def __init__(self, in_channels):
         super().__init__()
 
-        assert len(hidden_dims) == len(kernel_sizes)
-
-        self.layers = nn.ModuleList()
-        self.num_layers = len(hidden_dims)
-        self.hidden_dims = hidden_dims
-        self.layers.append(
-            ConvLSTMCell(input_dim, hidden_dims[0], kernel_sizes[0])
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(),
         )
 
-        for i in range(1, self.num_layers):
-            self.layers.append(
-                ConvLSTMCell(hidden_dims[i-1], hidden_dims[i], kernel_sizes[i])
-            )
-
-        self.head = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Flatten(),
-            nn.Linear(hidden_dims[-1], horizon)
+        self.fc = nn.Sequential(
+            nn.Linear(128 * 3 * 3, 512),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(512, horizon)
         )
 
     def forward(self, x):
-        B, T, C, H, W = x.shape
-
-        hs = []
-        cs = []
-        for hdim in self.hidden_dims:
-            hs.append(torch.zeros(B, hdim, H, W, device=x.device))
-            cs.append(torch.zeros(B, hdim, H, W, device=x.device))
-
-        for t in range(T):
-            inp = x[:, t]
-            for i, layer in enumerate(self.layers):
-                hs[i], cs[i] = layer(inp, hs[i], cs[i])
-                inp = hs[i]
-
-        return self.head(hs[-1])
+        h = self.conv(x.squeeze(1))
+        h = h.view(h.size(0), -1)
+        return self.fc(h)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-train_ds = SolarDataset(x_train, y_train, seq_len, flatten=False)
-valid_ds = SolarDataset(x_valid, y_valid, seq_len, flatten=False)
-test_ds = SolarDataset(x_test, y_test, seq_len, flatten=False)
+train_ds = SolarDataset(x_train, y_train)
+valid_ds = SolarDataset(x_valid, y_valid)
+test_ds = SolarDataset(x_test, y_test)
 
 train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
 
 input_dim = train_ds[0][0].shape[1]
-model = ConvLSTM(input_dim=input_dim, hidden_dims=[64,32], kernel_sizes=[3,3]).to(device)
+model = CNN(in_channels=input_dim).to(device)
 
 # set other various parameters
 criterion = nn.MSELoss()
@@ -231,10 +185,6 @@ if target == 'CSI':
     train_pred = train_pred * future_cs_ghi_train[train_idx]
     valid_pred = valid_pred * future_cs_ghi_valid[valid_idx]
     test_pred = test_pred * future_cs_ghi_test[test_idx]
-else:
-    train_pred *= 1000
-    valid_pred *= 1000
-    test_pred *= 1000
 
 # remove negative values
 valid_pred = np.maximum(valid_pred, 0)
@@ -360,7 +310,7 @@ if energy_metrics:
     test_energy_mbe = np.mean(test_pred_energy_day - test_actual_energy_day)
     test_energy_r2 = r2_score(test_actual_energy_day, test_pred_energy_day)
 
-path = f"results/grid_results/{target.lower()}/convlstm_{seq_len}"
+path = f"results/grid_results/{target.lower()}/cnn"
 
 # save results
 with open(path + ".txt", 'w') as file:
@@ -436,7 +386,7 @@ print("R^2:", test_r2)
 hours = np.arange(864) * (5/60) # 5 minutes to hours
 plt.plot(hours, test_true_h[:864], label="Actual")
 plt.plot(hours, test_pred_h[:864], label="Predicted")
-plt.title(f"ConvLSTM ({seq_len} Rows) GHI Pred vs Actual")
+plt.title("CNN GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
@@ -470,7 +420,7 @@ if energy_metrics:
     hours = np.arange(864) * (5/60) # 5 minutes to hours
     plt.plot(hours, test_actual_energy[:864], label="Actual")
     plt.plot(hours, test_pred_energy[:864], label="Predicted")
-    plt.title(f"ConvLSTM ({seq_len} Rows) Energy Pred vs Actual")
+    plt.title("CNN Energy Pred vs Actual")
     plt.legend()
     plt.ylabel("Energy (Wh/m\u00b2)")
     plt.xlabel("Hour")

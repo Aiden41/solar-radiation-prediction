@@ -2,7 +2,7 @@ from torch.utils.data import Dataset
 import torch
 
 class SolarDataset(Dataset):
-    def __init__(self, data, targets, seq_len, device='cpu', flatten=False):
+    def __init__(self, data, targets, seq_len=1, device='cpu', flatten=False):
         self.data = torch.tensor(data, dtype=torch.float32, device=device)
         self.targets = torch.tensor(targets, dtype=torch.float32, device=device)
         self.seq_len = seq_len

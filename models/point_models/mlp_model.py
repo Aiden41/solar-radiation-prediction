@@ -537,6 +537,10 @@ if energy_metrics:
     plt.plot(hours, test_actual_energy[:864], label="Actual")
     plt.plot(hours, test_pred_energy[:864], label="Predicted")
     plt.title("MLP Energy Pred vs Actual")
+    if lagged:
+        plt.title(f"MLP ({seq_len} Rows) Energy Pred vs Actual")
+    else:
+        plt.title("MLP Energy Pred vs Actual")
     plt.legend()
     plt.ylabel("Energy (Wh/m\u00b2)")
     plt.xlabel("Hour")
