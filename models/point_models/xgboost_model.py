@@ -433,7 +433,10 @@ print("R^2:", test_r2)
 hours = np.arange(864) * (5/60) # 5 minutes to hours
 plt.plot(hours, test_true_h[:864], label="Actual")
 plt.plot(hours, test_pred_h[:864], label="Predicted")
-plt.title(f"XGBoost ({seq_len} Rows) GHI Pred vs Actual")
+if lagged:
+    plt.title(f"XGBoost ({seq_len} Rows) GHI Pred vs Actual")
+else:
+    plt.title(f"XGBoost GHI Pred vs Actual")
 plt.legend()
 plt.ylabel("GHI")
 plt.xlabel("Hour")
@@ -467,7 +470,10 @@ if energy_metrics:
     hours = np.arange(864) * (5/60) # 5 minutes to hours
     plt.plot(hours, test_actual_energy[:864], label="Actual")
     plt.plot(hours, test_pred_energy[:864], label="Predicted")
-    plt.title(f"XGBoost ({seq_len} Rows) Energy Pred vs Actual")
+    if lagged:
+        plt.title(f"XGBoost ({seq_len} Rows) Energy Pred vs Actual")
+    else:
+        plt.title(f"XGBoost Energy Pred vs Actual")
     plt.legend()
     plt.ylabel("Energy (Wh/m\u00b2)")
     plt.xlabel("Hour")
