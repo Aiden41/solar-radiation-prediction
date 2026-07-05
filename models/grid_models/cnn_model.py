@@ -32,9 +32,9 @@ if target == 'CSI':
     y_valid = np.load(path + "y_valid.npy")
     y_test = np.load(path + "y_test.npy")
 else:
-    y_train = np.load(path + "y_train_ghi.npy")
-    y_valid = np.load(path + "y_valid_ghi.npy")
-    y_test = np.load(path + "y_test_ghi.npy")
+    y_train = np.load(path + "y_train_ghi.npy") / 1000
+    y_valid = np.load(path + "y_valid_ghi.npy") / 1000
+    y_test = np.load(path + "y_test_ghi.npy") / 1000
 
 y_train_ghi = np.load(path + "y_train_ghi.npy")
 y_valid_ghi = np.load(path + "y_valid_ghi.npy")
@@ -57,33 +57,49 @@ class CNN(nn.Module):
     def __init__(self, in_channels):
         super().__init__()
 
-        self.conv = nn.Sequential(
+        self.block1 = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+        )
 
+        self.block2 = nn.Sequential(
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+        )
 
-            nn.MaxPool2d(2),
-
+        self.block3 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
         )
 
+        self.gap = nn.AdaptiveAvgPool2d((1, 1))
+
         self.fc = nn.Sequential(
-            nn.Linear(128 * 3 * 3, 512),
+            nn.Linear(128, 256),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(512, horizon)
+            nn.Linear(256, horizon)
         )
 
     def forward(self, x):
         x = x.squeeze(1)
-        h = self.conv(x)
-        h = h.view(h.size(0), -1)
+        h = self.block1(x)
+        h = self.block2(h)
+        h = self.block3(h)
+
+        h = self.gap(h).squeeze(-1).squeeze(-1)
         return self.fc(h)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -192,6 +208,10 @@ if target == 'CSI':
     train_pred = train_pred * future_cs_ghi_train[train_idx]
     valid_pred = valid_pred * future_cs_ghi_valid[valid_idx]
     test_pred = test_pred * future_cs_ghi_test[test_idx]
+else:
+    train_pred *= 1000
+    valid_pred *= 1000
+    test_pred *= 1000
 
 # remove negative values
 valid_pred = np.maximum(valid_pred, 0)
