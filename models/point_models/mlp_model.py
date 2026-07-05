@@ -12,7 +12,7 @@ from solar_dataset import SolarDataset
 lagged = True
 
 num_epochs = 100
-batch_size = 1024
+batch_size = 512
 
 early_stopping = True
 patience = 8
@@ -141,9 +141,9 @@ if target == "CSI":
     test_csghi = test_dataset[future_csghi_cols].to_numpy().astype(np.float32)
 else:
     future_ghi_cols = [f"Future_GHI_{h}" for h in range(horizon)]
-    y_train = train_dataset[future_ghi_cols].to_numpy().astype(np.float32)
-    y_valid = valid_dataset[future_ghi_cols].to_numpy().astype(np.float32)
-    y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32)
+    y_train = train_dataset[future_ghi_cols].to_numpy().astype(np.float32) / 1000
+    y_valid = valid_dataset[future_ghi_cols].to_numpy().astype(np.float32) / 1000
+    y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32) / 1000
 
 # remaining_columns = list(x_train.columns)
 # print(remaining_columns)
@@ -197,7 +197,7 @@ model = MLP(input_dim=input_dim).to(device)
 # set other various parameters
 criterion = nn.MSELoss()
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4)
 
 best_val_loss = float('inf')
 since_improvement = 0
@@ -251,7 +251,7 @@ for epoch in range(1, num_epochs+1):
                 print(f"\nEarly stopping triggered at epoch {epoch}, restoring model from epoch {best_epoch}")
                 break
     
-    scheduler.step()
+    scheduler.step(valid_epoch_loss)
 
 if best_state_dict is not None:
     model.load_state_dict(best_state_dict)
@@ -290,6 +290,10 @@ if target == 'CSI':
     train_pred = train_pred * train_csghi[train_idx]
     valid_pred = valid_pred * valid_csghi[valid_idx]
     test_pred = test_pred * test_csghi[test_idx]
+else:
+    train_pred *= 1000
+    valid_pred *= 1000
+    test_pred *= 1000
 
 valid_mask = (sza_valid[valid_idx] < 90).any(axis=1)
 valid_true_day = valid_true[valid_mask]

@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from xgboost import XGBRegressor
 from sklearn.inspection import permutation_importance
 
-lagged = True
+lagged = False
 
 # to only predict 12th timestamp, flip these
 offset = 1 # number of rows ahead to predict
@@ -133,9 +133,9 @@ if target == "CSI":
     test_csghi = test_dataset[future_csghi_cols].to_numpy().astype(np.float32)
 else:
     future_ghi_cols = [f"Future_GHI_{h}" for h in range(horizon)]
-    y_train = train_dataset[future_ghi_cols].to_numpy().astype(np.float32)
-    y_valid = valid_dataset[future_ghi_cols].to_numpy().astype(np.float32)
-    y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32)
+    y_train = train_dataset[future_ghi_cols].to_numpy().astype(np.float32) / 1000
+    y_valid = valid_dataset[future_ghi_cols].to_numpy().astype(np.float32) / 1000
+    y_test = test_dataset[future_ghi_cols].to_numpy().astype(np.float32) / 1000
 
 # remaining_columns = list(x_train.columns)
 # print(remaining_columns)
@@ -224,6 +224,10 @@ if target == 'CSI':
     train_pred = train_pred * train_csghi[max_lag:]
     valid_pred = valid_pred * valid_csghi[max_lag:]
     test_pred = test_pred * test_csghi[max_lag:]
+else:
+    train_pred *= 1000
+    valid_pred *= 1000
+    test_pred *= 1000
 
 valid_mask = (sza_valid < 90)
 valid_true_day = valid_true[valid_mask]

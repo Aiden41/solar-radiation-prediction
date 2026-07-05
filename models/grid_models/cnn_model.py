@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from solar_dataset import SolarDataset
 
 num_epochs = 100
-batch_size = 1024
+batch_size = 512
 
 early_stopping = True
 patience = 8
@@ -59,11 +59,17 @@ class CNN(nn.Module):
 
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
+
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
+
             nn.MaxPool2d(2),
+
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
         )
 
@@ -75,7 +81,8 @@ class CNN(nn.Module):
         )
 
     def forward(self, x):
-        h = self.conv(x.squeeze(1))
+        x = x.squeeze(1)
+        h = self.conv(x)
         h = h.view(h.size(0), -1)
         return self.fc(h)
 
@@ -93,8 +100,8 @@ model = CNN(in_channels=input_dim).to(device)
 
 # set other various parameters
 criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
+optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, weight_decay=1e-4)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4)
 
 best_val_loss = float('inf')
 since_improvement = 0
@@ -150,7 +157,7 @@ for epoch in range(1, num_epochs+1):
                 print(f"\nEarly stopping triggered at epoch {epoch}, restoring model from epoch {best_epoch}")
                 break
     
-    scheduler.step()
+    scheduler.step(valid_epoch_loss)
 
 if best_state_dict is not None:
     model.load_state_dict(best_state_dict)

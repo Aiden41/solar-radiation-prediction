@@ -9,7 +9,7 @@ from solar_dataset import SolarDataset
 lagged = True
 
 num_epochs = 100
-batch_size = 1024
+batch_size = 512
 
 early_stopping = True
 patience = 8
@@ -39,9 +39,9 @@ if target == 'CSI':
     y_valid = np.load(path + "y_valid.npy")
     y_test = np.load(path + "y_test.npy")
 else:
-    y_train = np.load(path + "y_train_ghi.npy")
-    y_valid = np.load(path + "y_valid_ghi.npy")
-    y_test = np.load(path + "y_test_ghi.npy")
+    y_train = np.load(path + "y_train_ghi.npy") / 1000
+    y_valid = np.load(path + "y_valid_ghi.npy") / 1000
+    y_test = np.load(path + "y_test_ghi.npy") / 1000
 
 y_train_ghi = np.load(path + "y_train_ghi.npy")
 y_valid_ghi = np.load(path + "y_valid_ghi.npy")
@@ -98,8 +98,8 @@ model = MLP(input_dim=input_dim).to(device)
 
 # set other various parameters
 criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-4)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4)
 
 best_val_loss = float('inf')
 since_improvement = 0
@@ -155,7 +155,7 @@ for epoch in range(1, num_epochs+1):
                 print(f"\nEarly stopping triggered at epoch {epoch}, restoring model from epoch {best_epoch}")
                 break
     
-    scheduler.step()
+    scheduler.step(valid_epoch_loss)
 
 if best_state_dict is not None:
     model.load_state_dict(best_state_dict)
@@ -190,6 +190,10 @@ if target == 'CSI':
     train_pred = train_pred * future_cs_ghi_train[train_idx]
     valid_pred = valid_pred * future_cs_ghi_valid[valid_idx]
     test_pred = test_pred * future_cs_ghi_test[test_idx]
+else:
+    train_pred *= 1000
+    valid_pred *= 1000
+    test_pred *= 1000
 
 # remove negative values
 valid_pred = np.maximum(valid_pred, 0)

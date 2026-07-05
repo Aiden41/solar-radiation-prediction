@@ -35,9 +35,9 @@ if target == 'CSI':
     y_valid = np.load(path + "y_valid.npy")
     y_test = np.load(path + "y_test.npy")
 else:
-    y_train = np.load(path + "y_train_ghi.npy")
-    y_valid = np.load(path + "y_valid_ghi.npy")
-    y_test = np.load(path + "y_test_ghi.npy")
+    y_train = np.load(path + "y_train_ghi.npy") / 1000
+    y_valid = np.load(path + "y_valid_ghi.npy") / 1000
+    y_test = np.load(path + "y_test_ghi.npy") / 1000
 
 y_train_ghi = np.load(path + "y_train_ghi.npy")
 y_valid_ghi = np.load(path + "y_valid_ghi.npy")
@@ -151,6 +151,10 @@ if target == 'CSI':
     train_pred = train_pred * future_cs_ghi_train[max_lag:]
     valid_pred = valid_pred * future_cs_ghi_valid[max_lag:]
     test_pred = test_pred * future_cs_ghi_test[max_lag:]
+else:
+    train_pred *= 1000
+    valid_pred *= 1000
+    test_pred *= 1000
 
 valid_mask = (sza_valid < 90)
 valid_true_day = valid_true[valid_mask]

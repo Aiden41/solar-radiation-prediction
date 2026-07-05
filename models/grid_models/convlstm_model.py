@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from solar_dataset import SolarDataset
 
 num_epochs = 100
-batch_size = 1024
+batch_size = 512
 
 early_stopping = True
 patience = 8
@@ -139,8 +139,8 @@ model = ConvLSTM(input_dim=input_dim, hidden_dims=[64,32], kernel_sizes=[3,3]).t
 
 # set other various parameters
 criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-4)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4)
 
 best_val_loss = float('inf')
 since_improvement = 0
@@ -196,7 +196,7 @@ for epoch in range(1, num_epochs+1):
                 print(f"\nEarly stopping triggered at epoch {epoch}, restoring model from epoch {best_epoch}")
                 break
     
-    scheduler.step()
+    scheduler.step(valid_epoch_loss)
 
 if best_state_dict is not None:
     model.load_state_dict(best_state_dict)
