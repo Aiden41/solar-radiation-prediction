@@ -179,22 +179,16 @@ class TimeSeriesTransformer(nn.Module):
             nn.Linear(d_model, horizon),
         )
 
-    def _causal_mask(self, T, device):
-        mask = torch.full((T, T), float('-inf'), device=device)
-        mask = torch.triu(mask, diagonal=1)
-        return mask
-
     def forward(self, x):
         B, T, _ = x.size()
         x = self.input_projection(x)
         x = x + self.pos_embedding[:, :T, :]
 
-        mask = self._causal_mask(T, x.device)
-        h = self.encoder(x, mask)
+        h = self.encoder(x)
+        s = h[:, -1, :] # last timestep pooling
+        s = self.norm(s)
 
-        h = h[:, -1, :]
-        h = self.norm(h)
-        return self.fc(h)
+        return self.fc(s)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = TimeSeriesTransformer(
@@ -204,7 +198,7 @@ model = TimeSeriesTransformer(
     nhead=4,
     num_layers=4,
     dim_feedforward=256,
-    dropout=0.05
+    dropout=0.1
 ).to(device)
 
 # set other various parameters
