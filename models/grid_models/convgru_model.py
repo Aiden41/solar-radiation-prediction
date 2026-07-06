@@ -131,7 +131,7 @@ model = ConvGRU(input_dim=input_dim, hidden_dims=[64,32], kernel_sizes=[3,3]).to
 
 # set other various parameters
 criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-5)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4)
 
 best_val_loss = float('inf')

@@ -21,7 +21,7 @@ horizon = 12 # number of values to predict
 
 seq_len = 12 # number of rows
 
-target = 'CSI' # GHI or CSI
+target = 'GHI' # GHI or CSI
 
 energy_metrics = True
 
@@ -105,7 +105,7 @@ for h in range(horizon):
     valid_dataset[f"Future_SZA_{h}"] = valid_dataset["Solar Zenith Angle"].shift(-shift)
     test_dataset[f"Future_SZA_{h}"] = test_dataset["Solar Zenith Angle"].shift(-shift)
 
-cut = offset + horizon
+cut = offset + horizon - 1
 train_dataset = train_dataset.iloc[:-cut]
 valid_dataset = valid_dataset.iloc[:-cut]
 test_dataset = test_dataset.iloc[:-cut]
@@ -175,7 +175,6 @@ class TimeSeriesTransformer(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.ReLU(),
-            nn.Dropout(dropout),
             nn.Linear(d_model, horizon),
         )
 
@@ -191,20 +190,6 @@ class TimeSeriesTransformer(nn.Module):
         return self.fc(s)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = TimeSeriesTransformer(
-    input_dim=x_train.shape[1],
-    seq_len=seq_len,
-    d_model=128,
-    nhead=4,
-    num_layers=4,
-    dim_feedforward=256,
-    dropout=0.1
-).to(device)
-
-# set other various parameters
-criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4)
 
 train_ds = SolarDataset(data=x_train, targets=y_train, seq_len=seq_len, device=device, flatten=False)
 valid_ds = SolarDataset(data=x_valid, targets=y_valid, seq_len=seq_len, device=device, flatten=False)
@@ -212,6 +197,21 @@ test_ds = SolarDataset(data=x_test, targets=y_test, seq_len=seq_len, device=devi
 
 train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
+
+model = TimeSeriesTransformer(
+    input_dim=x_train.shape[1],
+    seq_len=seq_len,
+    d_model=128,
+    nhead=4,
+    num_layers=4,
+    dim_feedforward=256,
+    dropout=0.05
+).to(device)
+
+# set other various parameters
+criterion = nn.MSELoss()
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4)
 
 best_val_loss = float('inf')
 since_improvement = 0

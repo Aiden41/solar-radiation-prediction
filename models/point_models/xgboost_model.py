@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from xgboost import XGBRegressor
 from sklearn.inspection import permutation_importance
 
-lagged = False
+lagged = True
 
 # to only predict 12th timestamp, flip these
 offset = 1 # number of rows ahead to predict
@@ -103,7 +103,7 @@ for h in range(horizon):
     valid_dataset[f"Future_SZA_{h}"] = valid_dataset["Solar Zenith Angle"].shift(-shift)
     test_dataset[f"Future_SZA_{h}"] = test_dataset["Solar Zenith Angle"].shift(-shift)
 
-cut = offset + horizon
+cut = offset + horizon - 1
 train_dataset = train_dataset.iloc[:-cut]
 valid_dataset = valid_dataset.iloc[:-cut]
 test_dataset = test_dataset.iloc[:-cut]
@@ -111,7 +111,7 @@ test_dataset = test_dataset.iloc[:-cut]
 # all_columns = list(train_dataset.columns)
 
 future_columns = []
-for h in range(horizon):
+for h in range(1, horizon):
     future_columns += [f"Future_SZA_{h}", f"Future_GHI_{h}", f"Future_CSI_{h}", f"Future_CS_GHI_{h}"]
 
 drop_columns = ['Minute', 'Month', 'Hour', 'Year', 'Day', 'DayOfYear', 'Temperature', 'Alpha', 'Ozone', 'Dew Point', 'Surface Albedo', 'Pressure', 'Aerosol Optical Depth', 'Asymmetry', 'Clearsky DNI', 'Clearsky DHI', 'Clearsky GHI'] + future_columns

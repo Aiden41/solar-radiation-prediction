@@ -19,7 +19,7 @@ horizon = 12 # number of values to predict
 
 path = "saves/preprocessed/"
 
-target = 'GHI' # GHI or CSI
+target = 'CSI' # GHI or CSI
 
 energy_metrics = True
 
@@ -54,7 +54,7 @@ future_cs_ghi_valid = np.load(path + "future_cs_ghi_valid.npy")
 future_cs_ghi_test = np.load(path + "future_cs_ghi_test.npy")
 
 class CNN(nn.Module):
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, dropout):
         super().__init__()
 
         self.block1 = nn.Sequential(
@@ -89,7 +89,7 @@ class CNN(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(128, 256),
             nn.ReLU(),
-            nn.Dropout(0.1),
+            nn.Dropout(dropout),
             nn.Linear(256, horizon)
         )
 
@@ -112,11 +112,11 @@ train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
 
 input_dim = train_ds[0][0].shape[1]
-model = CNN(in_channels=input_dim).to(device)
+model = CNN(in_channels=input_dim, dropout=0.1).to(device)
 
 # set other various parameters
 criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, weight_decay=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, weight_decay=1e-3)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4)
 
 best_val_loss = float('inf')

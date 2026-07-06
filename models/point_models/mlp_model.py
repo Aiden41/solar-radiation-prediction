@@ -111,7 +111,7 @@ for h in range(horizon):
     valid_dataset[f"Future_SZA_{h}"] = valid_dataset["Solar Zenith Angle"].shift(-shift)
     test_dataset[f"Future_SZA_{h}"] = test_dataset["Solar Zenith Angle"].shift(-shift)
 
-cut = offset + horizon
+cut = offset + horizon - 1
 train_dataset = train_dataset.iloc[:-cut]
 valid_dataset = valid_dataset.iloc[:-cut]
 test_dataset = test_dataset.iloc[:-cut]
@@ -159,16 +159,43 @@ x_valid = x_scaler.transform(x_valid).astype(np.float32)
 x_test = x_scaler.transform(x_test).astype(np.float32)
 
 class MLP(nn.Module):
-    def __init__(self, input_dim):
+    def __init__(self, input_dim, dropout):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(input_dim, 256),
             nn.ReLU(),
-            nn.Dropout(0.1),
+            nn.Dropout(dropout),
 
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Dropout(0.1),
+            nn.Dropout(dropout),
+
+            nn.Linear(128, 64),
+            nn.ReLU(),
+        )
+
+        self.norm = nn.LayerNorm(64)
+        self.fc = nn.Linear(64, horizon)
+
+    def forward(self, x):
+        h = self.net(x)
+        h = self.norm(h)
+        return self.fc(h)
+
+class LagMLP(nn.Module):
+    def __init__(self, input_dim, dropout):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, 512),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+
+            nn.Linear(256, 128),
+            nn.ReLU(),
 
             nn.Linear(128, 64),
             nn.ReLU(),
@@ -192,11 +219,14 @@ train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
 
 input_dim = len(train_ds[0][0])
-model = MLP(input_dim=input_dim).to(device)
+if lagged:
+    model = LagMLP(input_dim=input_dim, dropout=0.1).to(device)
+else:
+    model = MLP(input_dim=input_dim, dropout=0.1).to(device)
 
 # set other various parameters
 criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4)
 
 best_val_loss = float('inf')

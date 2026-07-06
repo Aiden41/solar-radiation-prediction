@@ -93,7 +93,7 @@ for x in range(1,8):
             valid_dataset[f"Future_SZA_{h}"] = valid_dataset["Solar Zenith Angle"].shift(-shift)
             test_dataset[f"Future_SZA_{h}"] = test_dataset["Solar Zenith Angle"].shift(-shift)
 
-        cut = offset + horizon
+        cut = offset + horizon - 1
         train_dataset = train_dataset.iloc[:-cut]
         valid_dataset = valid_dataset.iloc[:-cut]
         test_dataset = test_dataset.iloc[:-cut]
@@ -113,8 +113,7 @@ for x in range(1,8):
         x_test = test_dataset.drop(columns = drop_columns)
 
         remaining_columns = list(x_train.columns)
-        print(remaining_columns)
-        input()
+        # print(remaining_columns)
 
         x_train = x_train.astype(np.float32)
         x_valid = x_valid.astype(np.float32)

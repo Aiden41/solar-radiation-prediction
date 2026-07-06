@@ -61,23 +61,26 @@ future_cs_ghi_valid = np.load(path + "future_cs_ghi_valid.npy")
 future_cs_ghi_test = np.load(path + "future_cs_ghi_test.npy")
 
 class MLP(nn.Module):
-    def __init__(self, input_dim):
+    def __init__(self, input_dim, dropout=0.1):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(input_dim, 2048),
             nn.ReLU(),
-            nn.Dropout(0.1),
+            nn.Dropout(dropout),
 
             nn.Linear(2048, 1024),
             nn.ReLU(),
-            nn.Dropout(0.1),
+            nn.Dropout(dropout),
 
             nn.Linear(1024, 512),
             nn.ReLU(),
+
+            nn.Linear(512, 256),
+            nn.ReLU(),
         )
 
-        self.norm = nn.LayerNorm(512)
-        self.fc = nn.Linear(512, horizon)
+        self.norm = nn.LayerNorm(256)
+        self.fc = nn.Linear(256, horizon)
 
     def forward(self, x):
         h = self.net(x)
@@ -94,11 +97,11 @@ train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 valid_loader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
 
 input_dim = len(train_ds[0][0])
-model = MLP(input_dim=input_dim).to(device)
+model = MLP(input_dim=input_dim, dropout=0.1).to(device)
 
 # set other various parameters
 criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=1e-2)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=4)
 
 best_val_loss = float('inf')
