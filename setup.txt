@@ -1,0 +1,16 @@
+Baseline and point models:
+
+Create data/.env with NLR_API_KEY and NLR_EMAIL if not already done.
+Set grid_size=1 and path='data/target' in data/nsrdb.py and run it.
+Then, run data/format_point.py.
+You can now run all baseline and point models.
+
+_______________________________
+
+Grid models:
+
+Create data/.env with NLR_API_KEY and NLR_EMAIL if not already done.
+Adjust grid_size, km_spacing, and path variables in data/nsrdb.py and run it.
+Then, run data/format.py.
+In models/grid_models/preprocess.py, set your desired grid size by adjusting the rows variable. Adjust path and out_path as well.
+Each grid model can be run after adjusting the path variable in the corresponding file.

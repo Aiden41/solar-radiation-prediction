@@ -26,7 +26,7 @@ target = 'CSI' # GHI or CSI
 energy_metrics = True
 
 # read in data
-dataset = pd.read_csv('data/5min/row4/4/data.csv', dtype=np.float32)
+dataset = pd.read_csv('data/target/data.csv', dtype=np.float32)
 dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
 mask = dataset['Year'] <= 2022
 train_dataset = dataset[mask].copy()

@@ -7,7 +7,7 @@ from torch.utils.data import TensorDataset
 offset = 12
 
 # read in data
-dataset = pd.read_csv('data/5min/row4/4/data.csv')
+dataset = pd.read_csv('data/target/data.csv')
 mask = dataset['Year'] <= 2022
 train_dataset = dataset[mask].copy()
 mask = dataset['Year'] == 2023

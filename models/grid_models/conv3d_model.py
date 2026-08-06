@@ -17,7 +17,7 @@ patience = 8
 # offset is the number of rows ahead to predict.
 horizon = 12 # number of values to predict
 
-path = "saves/preprocessed/"
+path = "saves/preprocessed/7x7_5km/"
 seq_len = 12
 
 target = 'CSI' # GHI or CSI

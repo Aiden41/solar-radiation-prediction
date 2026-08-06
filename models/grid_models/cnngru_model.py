@@ -17,7 +17,7 @@ patience = 8
 # offset is the number of rows ahead to predict.
 horizon = 12 # number of values to predict
 
-path = "saves/preprocessed/"
+path = "saves/preprocessed/7x7_5km/"
 seq_len = 12
 
 target = 'CSI' # GHI or CSI
@@ -27,6 +27,8 @@ energy_metrics = True
 x_train = np.load(path + "train_grid.npy")
 x_valid = np.load(path + "valid_grid.npy")
 x_test = np.load(path + "test_grid.npy")
+
+_, _, grid_rows, _ = x_train.shape
 
 if target == 'CSI':
     y_train = np.load(path + "y_train.npy")
@@ -71,7 +73,7 @@ class CNNEncoder(nn.Module):
         B, T, C, H, W = x.shape
         x = x.view(B * T, C, H, W)
         h = self.encoder(x)
-        h = h.view(B, T, 8, 7, 7)
+        h = h.view(B, T, 8, H, W)
         return h
 
 class CNNGRU(nn.Module):
@@ -80,7 +82,7 @@ class CNNGRU(nn.Module):
 
         self.cnn_encoder = CNNEncoder(in_channels)
 
-        self.flat_dim = 8 * 7 * 7
+        self.flat_dim = 8 * grid_rows * grid_rows
         self.input_proj = nn.Linear(self.flat_dim, d_model)
 
         self.gru = nn.GRU(

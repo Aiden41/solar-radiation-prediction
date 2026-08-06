@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
@@ -10,12 +11,24 @@ all_x_train_raw = []
 all_x_valid_raw = []
 all_x_test_raw = []
 
-for x in range(1,8):
-    for y in range(1,8):
-        path = f"data/5min/row{x}/{y}/data.csv"
+rows = 7 # change these!!
+path = "9x9_10km" # change these!!
+out_path = f"saves/preprocessed/{rows}x{rows}_10km" # change these!!
+os.makedirs(out_path, exist_ok=True)
 
-        dataset = pd.read_csv(path, dtype=np.float32)
+max_rows = len(os.listdir("data/" + path))
+center = (max_rows + 1) // 2
+half = (rows - 1) // 2
+
+start_index = center - half
+end_index = center + half + 1
+
+for x in range(start_index, end_index):
+    for y in range(start_index, end_index):
+        curr_path = "data/" + path + f"/row{x}/{y}/data.csv"
+        dataset = pd.read_csv(curr_path, dtype=np.float32)
         dataset = pd.get_dummies(dataset, columns=['Cloud Type'], dtype=int)
+
         mask = dataset['Year'] <= 2022
         train_dataset = dataset[mask].copy()
         mask = dataset['Year'] == 2023
@@ -202,7 +215,7 @@ scaled_x_valid = np.stack(scaled_x_valid, axis=0)
 scaled_x_test = np.stack(scaled_x_test, axis=0)
 
 def to_grid(arr):
-    H = W = 7
+    H = W = rows
     arr = arr.reshape(H, W, arr.shape[1], arr.shape[2])
     arr = arr.transpose(2, 3, 0, 1)
     return arr
@@ -211,28 +224,28 @@ train_grid = to_grid(scaled_x_train)
 valid_grid = to_grid(scaled_x_valid)
 test_grid = to_grid(scaled_x_test)
 
-np.save("saves/preprocessed/train_grid.npy", train_grid)
-np.save("saves/preprocessed/valid_grid.npy", valid_grid)
-np.save("saves/preprocessed/test_grid.npy", test_grid)
+np.save(out_path + "/train_grid.npy", train_grid)
+np.save(out_path + "/valid_grid.npy", valid_grid)
+np.save(out_path + "/test_grid.npy", test_grid)
 
-np.save("saves/preprocessed/y_train.npy", y_train)
-np.save("saves/preprocessed/y_valid.npy", y_valid)
-np.save("saves/preprocessed/y_test.npy", y_test)
+np.save(out_path + "/y_train.npy", y_train)
+np.save(out_path + "/y_valid.npy", y_valid)
+np.save(out_path + "/y_test.npy", y_test)
 
-np.save("saves/preprocessed/train_weights.npy", train_weights)
-np.save("saves/preprocessed/valid_weights.npy", valid_weights)
-np.save("saves/preprocessed/test_weights.npy", test_weights)
+np.save(out_path + "/train_weights.npy", train_weights)
+np.save(out_path + "/valid_weights.npy", valid_weights)
+np.save(out_path + "/test_weights.npy", test_weights)
 
-np.save("saves/preprocessed/averages.npy", np.array([train_average_GHI, valid_average_GHI, test_average_GHI], dtype=np.float32))
+np.save(out_path + "/averages.npy", np.array([train_average_GHI, valid_average_GHI, test_average_GHI], dtype=np.float32))
 
-np.save("saves/preprocessed/future_sza_train.npy", sza_train)
-np.save("saves/preprocessed/future_sza_valid.npy", sza_valid)
-np.save("saves/preprocessed/future_sza_test.npy", sza_test)
+np.save(out_path + "/future_sza_train.npy", sza_train)
+np.save(out_path + "/future_sza_valid.npy", sza_valid)
+np.save(out_path + "/future_sza_test.npy", sza_test)
 
-np.save("saves/preprocessed/future_cs_ghi_train.npy", train_csghi)
-np.save("saves/preprocessed/future_cs_ghi_valid.npy", valid_csghi)
-np.save("saves/preprocessed/future_cs_ghi_test.npy", test_csghi)
+np.save(out_path + "/future_cs_ghi_train.npy", train_csghi)
+np.save(out_path + "/future_cs_ghi_valid.npy", valid_csghi)
+np.save(out_path + "/future_cs_ghi_test.npy", test_csghi)
 
-np.save("saves/preprocessed/y_train_ghi.npy", y_train_ghi)
-np.save("saves/preprocessed/y_valid_ghi.npy", y_valid_ghi)
-np.save("saves/preprocessed/y_test_ghi.npy", y_test_ghi)
+np.save(out_path + "/y_train_ghi.npy", y_train_ghi)
+np.save(out_path + "/y_valid_ghi.npy", y_valid_ghi)
+np.save(out_path + "/y_test_ghi.npy", y_test_ghi)

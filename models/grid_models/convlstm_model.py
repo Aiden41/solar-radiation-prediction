@@ -17,7 +17,7 @@ patience = 8
 # offset is the number of rows ahead to predict.
 horizon = 12 # number of values to predict
 
-path = "saves/preprocessed/"
+path = "saves/preprocessed/7x7_5km/"
 seq_len = 12
 
 target = 'CSI' # GHI or CSI
@@ -27,6 +27,8 @@ energy_metrics = True
 x_train = np.load(path + "train_grid.npy")
 x_valid = np.load(path + "valid_grid.npy")
 x_test = np.load(path + "test_grid.npy")
+
+_, _, grid_rows, _ = x_train.shape
 
 if target == 'CSI':
     y_train = np.load(path + "y_train.npy")
@@ -67,7 +69,7 @@ class ConvLSTMCell(nn.Module):
             padding=padding
         )
 
-        self.layer_norm = nn.LayerNorm([4*hidden_dim, 7, 7])
+        self.layer_norm = nn.LayerNorm([4*hidden_dim, grid_rows, grid_rows])
         self.bias_gates = nn.Parameter(torch.zeros(4*hidden_dim))
 
     def forward(self, x, h, c):

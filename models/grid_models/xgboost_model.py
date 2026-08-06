@@ -11,7 +11,7 @@ lagged = False
 horizon = 12 # number of values to predict
 
 seq_len = None
-path = "saves/preprocessed/"
+path = "saves/preprocessed/7x7_5km/"
 if lagged:
     seq_len = 12
 else:

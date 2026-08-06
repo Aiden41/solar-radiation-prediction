@@ -1,7 +1,9 @@
 .vscode
-notes.txt
-data/1hr
-data/5min
+data/*
 saves/*
-data/target
 __pycache__
+.env
+
+!data/format.py
+!data/format_point.py
+!data/nsrdb.py
