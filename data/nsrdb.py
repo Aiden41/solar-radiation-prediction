@@ -40,7 +40,7 @@ def build_grid():
 if grid_size > 1:
     grid_points = build_grid()
 
-async def worker(session, queue):
+async def worker(session, queue, retry_queue):
     while True:
         job = await queue.get()
         if job is None:
@@ -72,12 +72,11 @@ async def worker(session, queue):
             else:
                 print(f"FAILED {year} for ({lat}, {lon}): {response.status}")
                 print(await response.text())
-                await asyncio.sleep(1.5)
-                await queue.put(job)
+                await retry_queue.put(job)
 
         queue.task_done()
 
-async def scheduler(queue, jobs):
+async def scheduler(queue, retry_queue, jobs):
     for job in jobs:
         lat, lon, year, row, col = job
         folder = path if grid_size == 1 else f"{path}/row{row}/{col}"
@@ -88,14 +87,21 @@ async def scheduler(queue, jobs):
             print(f"Skipping {year} for ({lat}, {lon}): {filename} already exists")
             continue
 
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(2)
         await queue.put(job)
 
-    for _ in range(19):
+        while not retry_queue.empty():
+            retry_job = await retry_queue.get()
+            await asyncio.sleep(2)
+            await queue.put(retry_job)
+            retry_queue.task_done()
+
+    for _ in range(15):
         await queue.put(None)
 
 async def main():
     queue = asyncio.Queue()
+    retry_queue = asyncio.Queue()
     jobs = []
 
     index = 0
@@ -107,8 +113,8 @@ async def main():
                 jobs.append((lat, lon, year, r, c))
 
     async with aiohttp.ClientSession() as session:
-        workers = [asyncio.create_task(worker(session, queue)) for _ in range(19)]
-        sched = asyncio.create_task(scheduler(queue, jobs))
+        workers = [asyncio.create_task(worker(session, queue, retry_queue)) for _ in range(15)]
+        sched = asyncio.create_task(scheduler(queue, retry_queue, jobs))
         await sched
         await queue.join()
         await asyncio.gather(*workers)
