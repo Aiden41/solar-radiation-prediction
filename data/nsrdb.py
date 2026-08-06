@@ -10,6 +10,7 @@ path = "data/9x9_10km" # change these!!
 
 load_dotenv()
 API_KEY = os.getenv('NLR_API_KEY')
+EMAIL = os.getenv('NLR_EMAIL')
 
 years = ["2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
 interval = 5 # 5 minute rows
@@ -47,7 +48,7 @@ def download_csv(lat, lon, year, row, col):
         f"&wkt={wkt}"
         f"&names={year}"
         f"&interval={interval}"
-        f"&email={os.getenv('NLR_EMAIL')}"
+        f"&email={EMAIL}"
     )
 
     if grid_size == 1:
