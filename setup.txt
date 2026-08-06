@@ -10,7 +10,7 @@ _______________________________
 Grid models:
 
 Create data/.env with NLR_API_KEY and NLR_EMAIL if not already done.
-Adjust grid_size, km_spacing, and path variables in data/nsrdb.py and run it.
+Adjust grid_size and km_spacing variables in data/nsrdb.py and run it.
 Then, run data/format.py.
 In models/grid_models/preprocess.py, set your desired grid size by adjusting the rows variable. Adjust path and out_path as well.
 Each grid model can be run after adjusting the path variable in the corresponding file.
